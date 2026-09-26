@@ -18,3 +18,17 @@
 .camera-placeholder{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:9px;background:#24272e;color:#bbc0cc;font-size:11px;text-align:center;padding:8px}
 .camera-error{position:absolute;z-index:9;bottom:12px;left:12px;right:12px;margin:auto;max-width:430px;display:flex;align-items:center;gap:10px;padding:10px 10px 10px 14px;background:#2e242a;border:1px solid #795261;border-radius:12px;color:#edc2ce;font-size:12px;line-height:1.5;box-shadow:0 4px 20px #0004}
 .camera-error .icon-button{flex-shrink:0}
+
+.tool-box{cursor:crosshair}.selection-box{position:absolute;pointer-events:none;border:1px solid #b6a1fb;background:#b6a1fb1c;z-index:3}
+.mini-menu{display:flex;align-items:center;gap:3px;padding:4px;background:#292b33f5;border:1px solid #4b465c;border-radius:12px;box-shadow:0 5px 24px #0005;backdrop-filter:blur(12px)}
+.shape-menu{position:absolute;z-index:7;overflow-x:auto;scrollbar-width:none;min-height:52px}
+.menu-color{width:42px;height:42px;flex:0 0 42px;display:flex;align-items:center;justify-content:center;position:relative;border-radius:8px}
+.menu-color>span{width:22px;height:22px;border-radius:6px;border:1px solid #ffffff38}
+.menu-color.stroke-color>span{background:transparent;border-width:3px}.menu-color:focus-within{outline:2px solid var(--accent);outline-offset:-2px}
+.frame-menu{position:fixed;z-index:12;width:176px}.frame-menu button{height:42px;flex:1;display:flex;align-items:center;justify-content:center;gap:8px;border-radius:7px;font-size:11px;color:#d5d0df}
+.frame-card{touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+.frame-card.dragging{opacity:.5;transform:scale(.94);border-style:dashed;cursor:grabbing}
+.frame-card.drop-before{box-shadow:inset 4px 0 #c6b2fb;border-color:#c6b2fb}.frame-card.drop-after{box-shadow:inset -4px 0 #c6b2fb;border-color:#c6b2fb}
+.reordering{cursor:grabbing}.undo-tools .play-button{margin-left:5px;margin-right:0}
+.frame-drag-preview{position:fixed;z-index:15;pointer-events:none;overflow:hidden;transform:scale(1.07) rotate(-2deg);border:1px solid #c6b2fb;border-radius:8px;background:#24232c;box-shadow:0 9px 30px #0008}
+.frame-drag-preview canvas{display:block;width:100%;height:100%}.frame-drag-preview .frame-number{color:#d6c9ff}

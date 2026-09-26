@@ -97,3 +97,37 @@ test('voiceover composites camera movement live without including preview contro
  const overlay=fakeCamera(),take=await startVoiceRecording({source:options.canvas,width:1080,height:1920,getCameraOverlay:()=>overlay});await pump(3);overlay.rect.x=210;await pump(3);const promise=take.stop();await pump();await promise;
  assert.ok(calls.some(c=>c[0]==='roundRect'&&c[1]===100));assert.ok(calls.some(c=>c[0]==='roundRect'&&c[1]===210));assert.ok(calls.some(c=>c[0]==='drawImage'&&c[1]===overlay.video));
 }));
+
+import {shapeBounds,boxSelection,moveSelection,duplicateSelection,reorderFrames,deleteFrame} from '../lib/editing.js';
+import {drawShape} from '../lib/animation.js';
+test('box selection works in both drag directions and includes rotated shapes and curved lines',()=>{
+ const shapes=resolveShapes(initialFrames,1),bounds=shapeBounds(shapes.find(s=>s.id==='square'));
+ assert.ok(bounds.left<220);assert.deepEqual(boxSelection(shapes,{x:0,y:0},{x:1000,y:800}),shapes.map(s=>s.id));
+ assert.deepEqual(boxSelection(shapes,{x:1000,y:800},{x:0,y:0}),shapes.map(s=>s.id));assert.deepEqual(boxSelection(shapes,{x:-1000,y:-1000},{x:-800,y:-800}),[]);
+ const line={...initialFrames[0].changes.line,id:'arc',x:0,y:0,w:100,h:0,cx:50,cy:200,stroke:0};const b=shapeBounds(line);assert.equal(b.bottom,100);assert.deepEqual(boxSelection([line],{x:45,y:95},{x:55,y:105}),['arc']);
+});
+test('group movement preserves relative spacing and internal line connections',()=>{
+ const fs=connectedScene(),shapes=resolveShapes(fs,1),changes=moveSelection(shapes,80,-160);fs.push({id:'moved',changes});const moved=resolveShapes(fs,2);
+ for(const s of moved){const before=shapes.find(p=>p.id===s.id);close({x:s.x,y:s.y},{x:before.x+80,y:before.y-160});if(s.type==='line')for(const key of ['start','end','control']){const a=lineGeometry(before)[key],b=lineGeometry(s)[key];close(b,{x:a.x+80,y:a.y-160})}}
+ close(linePoint(moved.find(s=>s.id==='line'),0),anchorPoint(moved.find(s=>s.id==='circle'),moved.find(s=>s.id==='line').startLink));
+});
+test('duplicating a group reconnects copies to copies and leaves originals intact',()=>{
+ const shapes=resolveShapes(connectedScene(),1);let index=0;const copies=duplicateSelection(shapes,()=>`copy-${index++}`,80),resolved=resolveConnections([...shapes,...copies]),circle=resolved.find(s=>s.id==='copy-0'),line=resolved.find(s=>s.id==='copy-1');assert.equal(line.startLink.id,circle.id);close(linePoint(line,0),anchorPoint(circle,line.startLink));assert.equal(shapes[1].startLink.id,'circle');
+ const lone=duplicateSelection([shapes[1]],()=> 'only',80)[0];assert.equal(lone.startLink,null);close(linePoint(lone,0),{x:linePoint(shapes[1],0).x+80,y:linePoint(shapes[1],0).y+80});
+});
+const visibleState=shapes=>shapes.map(s=>({...s,visible:s.visible!==false,strokeColor:s.strokeColor||null,startLink:s.startLink||null,endLink:s.endLink||null})).sort((a,b)=>a.id.localeCompare(b.id));
+test('reordering any frame preserves the resolved appearance of all frame identities',()=>{
+ const fs=structuredClone(initialFrames);fs[1].changes.extra={...fs[0].changes.circle,id:'extra',x:10};fs[2].changes.square={visible:false};
+ const original=new Map(fs.map((f,i)=>[f.id,visibleState(resolveShapes(fs,i))]));
+ for(let from=0;from<fs.length;from++)for(let to=0;to<fs.length;to++){const moved=reorderFrames(fs,from,to);moved.forEach((f,i)=>assert.deepEqual(visibleState(resolveShapes(moved,i)),original.get(f.id)));assert.equal(moved[to].id,fs[from].id)}
+});
+test('reordered and deleted frames retain connected geometry and avoid orphan patches',()=>{
+ const fs=connectedScene(),expected=visibleState(resolveShapes(fs,1)),reordered=reorderFrames(fs,1,0);assert.deepEqual(visibleState(resolveShapes(reordered,0)),expected);const deleted=deleteFrame(fs,0);assert.deepEqual(visibleState(resolveShapes(deleted,0)),expected);assert.equal(deleteFrame(deleted,0),deleted);
+});
+test('reordering preserves continued inheritance where no new override is needed',()=>{
+ const fs=structuredClone(initialFrames),moved=reorderFrames(fs,1,2);moved[0].changes.circle.stroke=17;for(let i=1;i<moved.length;i++)assert.equal(resolveShapes(moved,i).find(s=>s.id==='circle').stroke,17);
+});
+test('stroke color inherits and smoothly interpolates independently of fill color',()=>{
+ const fs=structuredClone(initialFrames);fs[0].changes.circle.strokeColor='#000000';fs[2].changes.circle.strokeColor='#ffffff';assert.equal(resolveShapes(fs,1).find(s=>s.id==='circle').strokeColor,'#000000');assert.equal(interpolateShapes(fs,1.5).find(s=>s.id==='circle').strokeColor,'#808080');assert.equal(resolveShapes(fs,1).find(s=>s.id==='circle').color,fs[0].changes.circle.color);
+ const calls=[],ctx=new Proxy({},{get:(_,key)=>(...args)=>calls.push([key,...args]),set:(obj,key,value)=>{obj[key]=value;calls.push(['set',key,value]);return true}});drawShape(ctx,resolveShapes(fs,0).find(s=>s.id==='circle'));assert.ok(calls.some(c=>c[0]==='fill'));assert.ok(calls.some(c=>c[0]==='stroke'));assert.ok(calls.some(c=>c[0]==='set'&&c[1]==='strokeStyle'&&c[2]==='#000000'));
+});
