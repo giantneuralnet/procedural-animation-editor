@@ -397,3 +397,30 @@ test('JSON save and load retain linked symbol identity, tint, locks and transfor
  const state=savedAnimation(),outer=state.project.frames[0].changes.outer;outer.tint='#80ff80';outer.locked=true;outer.matrix=[1,.2,.3,1,20,30];state.project.frames[0].changes.linked={...outer,id:'linked',x:600};state.preferences.drawingStyle.strokeVisible=false;
  const restored=parseAnimation(serializeAnimation(state));assert.deepEqual(restored,state);assert.equal(restored.project.frames[0].changes.linked.symbolId,restored.project.frames[0].changes.outer.symbolId);assert.equal(restored.preferences.drawingStyle.strokeVisible,false);
 });
+
+import {parseStrokeWidth} from '../lib/defaults.js';
+import {rotationControl,rotationAngle,rotateShape} from '../lib/rotation.js';
+test('stroke entry defaults to eight for blank or invalid input, keeping valid zero and decimals',()=>{
+ assert.equal(DEFAULT_STYLE.stroke,8);assert.equal(newShapeStyle('line').stroke,8);
+ for(const value of['',' ','-','abc','NaN','Infinity','-1','81',null,undefined])assert.equal(parseStrokeWidth(value),8);
+ for(const[value,expected]of[['0',0],['0.5',.5],['12.',12],[' 16 ',16],['80',80]])assert.equal(parseStrokeWidth(value),expected);
+});
+test('rotation keeps shape center fixed and interpolates without shrinking geometry',()=>{
+ const s={...initialFrames[0].changes.circle,type:'rect',id:'turn',rotation:0},center=localToWorld(s,{x:s.w/2,y:s.h/2}),patch=rotateShape(s,center,90),turned={...s,...patch};
+ close(localToWorld(turned,{x:s.w/2,y:s.h/2}),center);assert.equal(turned.rotation,90);
+ const fs=[{id:'a',changes:{turn:s}},{id:'b',changes:{turn:patch}},{id:'c',changes:{}}],mid=interpolateShapes(fs,.5,'linear')[0];assert.equal(mid.rotation,45);assert.equal(mid.w,s.w);assert.equal(mid.h,s.h);assert.equal(resolveShapes(fs,2)[0].rotation,90);
+});
+test('rotation uses actual symbol content center and keeps the handle below visible content at each zoom',()=>{
+ const{outer,symbols}=nestedScene(),scene={symbols,time:.5},b=shapeBounds(outer,scene),control=rotationControl(outer,.4,scene),pivot=worldToLocal(outer,control.center);
+ assert.equal(control.base.y,b.bottom);assert.equal(control.handle.y-b.bottom,85);assert.equal(rotationControl(outer,2,scene).handle.y-b.bottom,17);
+ const rotated={...outer,...rotateShape(outer,control.center,67)};close(localToWorld(rotated,pivot),control.center);assert.equal(rotated.symbolId,outer.symbolId);
+});
+test('rotation preserves affine transforms and uses pointer angles in their parent coordinates',()=>{
+ const s={...initialFrames[0].changes.circle,matrix:[2,.5,.3,1.5,70,-25],rotation:30},pivot={x:20,y:30},center=localToWorld(s,pivot),rotated={...s,...rotateShape(s,center,90)};
+ close(localToWorld(rotated,pivot),center);assert.deepEqual(rotated.matrix,s.matrix);
+ const parentCenter={x:s.x+s.w/2,y:s.y+s.h/2},worldCenter=transformPoint(s.matrix,parentCenter),point=transformPoint(s.matrix,{x:parentCenter.x,y:parentCenter.y+20});assert.ok(Math.abs(rotationAngle(s,worldCenter,point)-Math.PI/2)<1e-10);assert.deepEqual(rotateShape({...s,locked:true},center,90),{});
+});
+test('rotated lines keep attached endpoints constrained while their free geometry changes',()=>{
+ const fs=connectedScene(),scene=resolveShapes(fs,0),line=scene.find(s=>s.type==='line'),control=rotationControl(line,1);fs[1].changes.line=rotateShape(line,control.center,45);
+ const result=resolveShapes(fs,1),l=result.find(s=>s.id==='line'),circle=result.find(s=>s.id==='circle');close(linePoint(l,0),anchorPoint(circle,l.startLink));assert.notDeepEqual(linePoint(l,1),linePoint(line,1));
+});

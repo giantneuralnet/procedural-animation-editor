@@ -12,7 +12,6 @@ export default function TouchPreview({touch,size,scale,shapes,selected,grid,hint
  if(hint){ctx.beginPath();ctx.arc(hint.x,hint.y,7/magnification,0,Math.PI*2);ctx.strokeStyle='#b4d7a0';ctx.lineWidth=1.5/magnification;ctx.stroke()}
  ctx.restore();const x=origin.x+touch.world.x*magnification,y=origin.y+touch.world.y*magnification;ctx.strokeStyle='#ffffff85';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(x-5,y);ctx.lineTo(x+5,y);ctx.moveTo(x,y-5);ctx.lineTo(x,y+5);ctx.stroke();
  },[touch,size,scale,shapes,selected,grid,hint,level,symbols,time]);
- let left=Math.max(8,Math.min(size.w-width-8,touch.x-width/2)),top=Math.max(8,touch.y-height-46);
- if(touch.y<height+48)left=touch.x<size.w/2?Math.min(size.w-width-8,touch.x+36):Math.max(8,touch.x-width-36);
+ const left=Math.max(8,size.w-width-12),top=Math.max(8,size.h-height-12);
  return <div className="touch-preview" style={{left,top,width,height}} aria-hidden="true"><canvas ref={ref}/></div>
 }
