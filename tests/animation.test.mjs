@@ -1,0 +1,8 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {resolveShapes,interpolateShapes,initialFrames} from '../lib/animation.js';
+test('earlier color changes carry through independent edits until a later explicit color',()=>{const fs=structuredClone(initialFrames);fs[0].changes.circle.color='#ff0000';assert.equal(resolveShapes(fs,1).find(s=>s.id==='circle').color,'#ff0000');assert.equal(resolveShapes(fs,1).find(s=>s.id==='circle').x,400);assert.equal(resolveShapes(fs,2).find(s=>s.id==='circle').color,'#e7aa8d')});
+test('blank added frames inherit resolved properties without freezing them',()=>{const fs=structuredClone(initialFrames);fs.splice(1,0,{id:'new',changes:{}});fs[0].changes.circle.w=180;assert.equal(resolveShapes(fs,1).find(s=>s.id==='circle').w,180);assert.equal(resolveShapes(fs,2).find(s=>s.id==='circle').w,200)});
+test('midpoint interpolates geometry and color',()=>{const fs=structuredClone(initialFrames);fs[0].changes.circle.color='#000000';fs[1].changes.circle.color='#ffffff';const s=interpolateShapes(fs,.5).find(s=>s.id==='circle');assert.equal(s.x,310);assert.equal(s.w,180);assert.equal(s.color,'#808080')});
+test('deletion carries forward and fades out',()=>{const fs=structuredClone(initialFrames);fs[1].changes.circle={visible:false};assert.equal(resolveShapes(fs,2).some(s=>s.id==='circle'),false);assert.equal(interpolateShapes(fs,.5).find(s=>s.id==='circle').opacity,.5)});
+test('new shapes do not appear on earlier frames and fade in',()=>{const fs=structuredClone(initialFrames);fs[1].changes.new={...fs[0].changes.circle,x:100};assert.equal(resolveShapes(fs,0).some(s=>s.id==='new'),false);assert.equal(interpolateShapes(fs,.5).find(s=>s.id==='new').opacity,.5)});
