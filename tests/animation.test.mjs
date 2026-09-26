@@ -131,3 +131,48 @@ test('stroke color inherits and smoothly interpolates independently of fill colo
  const fs=structuredClone(initialFrames);fs[0].changes.circle.strokeColor='#000000';fs[2].changes.circle.strokeColor='#ffffff';assert.equal(resolveShapes(fs,1).find(s=>s.id==='circle').strokeColor,'#000000');assert.equal(interpolateShapes(fs,1.5).find(s=>s.id==='circle').strokeColor,'#808080');assert.equal(resolveShapes(fs,1).find(s=>s.id==='circle').color,fs[0].changes.circle.color);
  const calls=[],ctx=new Proxy({},{get:(_,key)=>(...args)=>calls.push([key,...args]),set:(obj,key,value)=>{obj[key]=value;calls.push(['set',key,value]);return true}});drawShape(ctx,resolveShapes(fs,0).find(s=>s.id==='circle'));assert.ok(calls.some(c=>c[0]==='fill'));assert.ok(calls.some(c=>c[0]==='stroke'));assert.ok(calls.some(c=>c[0]==='set'&&c[1]==='strokeStyle'&&c[2]==='#000000'));
 });
+
+import {frameClock,framePlan,captureCanvas} from '../lib/recording-clock.js';
+import {encodeAnimation} from '../lib/fast-movie.js';
+import {microphoneMixer} from '../lib/microphone-mixer.js';
+import {interpolateScene} from '../lib/animation.js';
+import {styleSelection} from '../lib/editing.js';
+test('30 FPS cadence survives 60 Hz refresh jitter without collapsing to 20 FPS',()=>{
+ const due=frameClock(30),times=Array.from({length:601},(_,i)=>i*1000/60+(i%3===0?-.15:.1)),frames=times.filter(due);assert.ok(frames.length>=300&&frames.length<=302,`Encoded ${frames.length} frames in ten seconds`);
+ const stalled=frameClock(30);assert.equal(stalled(0),true);assert.equal(stalled(1000),true);assert.equal(stalled(1000.1),false);assert.equal(stalled(1033.4),true);
+});
+test('manual capture requests exactly one frame per call when the browser supports it',()=>{
+ const descriptor=Object.getOwnPropertyDescriptor(globalThis,'CanvasCaptureMediaStreamTrack');let requests=0,rate;
+ try{globalThis.CanvasCaptureMediaStreamTrack=class{requestFrame(){requests++}};const track=new CanvasCaptureMediaStreamTrack();const capture=captureCanvas({captureStream:fps=>{rate=fps;return{getVideoTracks:()=>[track]}}},30);assert.equal(rate,0);capture.request();capture.request();assert.equal(requests,2)}finally{if(descriptor)Object.defineProperty(globalThis,'CanvasCaptureMediaStreamTrack',descriptor);else delete globalThis.CanvasCaptureMediaStreamTrack}
+});
+function fakeEncoder(){const stats={timestamps:[],cancelled:0,finalized:0};return{stats,library:{canEncodeVideo:async()=>true,Mp4OutputFormat:class{},BufferTarget:class{buffer=new Uint8Array([1,2,3]).buffer},Output:class{constructor(options){this.target=options.target}addVideoTrack(source,metadata){stats.metadata=metadata}async start(){}async finalize(){stats.finalized++}async cancel(){stats.cancelled++}},CanvasSource:class{async add(timestamp,duration){stats.timestamps.push([timestamp,duration])}}}}}
+test('fast export writes all frames at exact 30 FPS without waiting for playback',async()=>{
+ const{library,stats}=fakeEncoder(),drawn=[];const movie=await encodeAnimation({canvas:{width:1920,height:1080},draw:t=>drawn.push(t),seconds:.3,fps:30},library);
+ assert.equal(stats.timestamps.length,9);assert.equal(movie.frameRateMode,'constant');assert.equal(movie.fps,30);assert.equal(movie.blob.type,'video/mp4');assert.equal(stats.metadata.frameRate,30);assert.equal(stats.finalized,1);assert.deepEqual(drawn,stats.timestamps.map(t=>t[0]));stats.timestamps.forEach(([time,duration],i)=>{assert.equal(time,i/30);assert.equal(duration,1/30)});
+ for(const fps of [24,25,30,60]){const plan=framePlan(2,fps);assert.equal(plan.count,2*fps);assert.equal(plan.seconds,2);assert.equal(plan.duration,1/fps)}
+});
+test('fast export cancellation closes the encoder and never delivers a partial file',async()=>{
+ const{library,stats}=fakeEncoder(),controller=new AbortController();await assert.rejects(encodeAnimation({canvas:{width:1080,height:1920},draw:()=>controller.abort(),seconds:1,fps:30,signal:controller.signal},library),{name:'AbortError'});assert.ok(stats.cancelled>0);assert.equal(stats.finalized,0);
+});
+test('unsupported fast encoders allow the real-time fallback',async()=>{const{library}=fakeEncoder();library.canEncodeVideo=async()=>false;assert.equal(await encodeAnimation({canvas:{width:1080,height:1920},seconds:1,fps:30},library),null)});
+test('frame taps can transition directly to a distant frame and interrupt smoothly',()=>{
+ const a=resolveShapes(initialFrames,0),c=resolveShapes(initialFrames,2),middle=interpolateScene(a,c,.5,'linear');assert.equal(middle.find(s=>s.id==='circle').x,400);
+ const b=resolveShapes(initialFrames,1);assert.deepEqual(interpolateScene(middle,b,0),middle);assert.deepEqual(interpolateScene(middle,b,1),b);
+});
+test('group fill, stroke color and width edits affect all selected shapes and remain independent',()=>{
+ const fs=structuredClone(initialFrames),selected=resolveShapes(fs,0).filter(s=>s.id!=='line');
+ for(const [property,value] of [['color','#102030'],['strokeColor','#fedcba'],['stroke',12]]){const changes=styleSelection(selected,property,value);for(const[id,patch]of Object.entries(changes))fs[0].changes[id]={...fs[0].changes[id],...patch}}
+ for(const s of resolveShapes(fs,1).filter(s=>s.id!=='line')){assert.equal(s.color,'#102030');assert.equal(s.strokeColor,'#fedcba');assert.equal(s.stroke,12);assert.equal(s.fill,true)}
+ assert.equal(resolveShapes(fs,1).find(s=>s.id==='line').stroke,4);assert.equal(resolveShapes(fs,2).find(s=>s.id==='circle').color,'#e7aa8d');assert.equal(styleSelection(selected,'stroke',8).circle.strokeColor,undefined);
+});
+async function withAudioMixer(run){const original=Object.getOwnPropertyDescriptor(globalThis,'AudioContext'),stats={connections:0,disconnections:0,stops:0,closed:0};const gain={gain:{value:1},connect(){},disconnect(){}};
+ globalThis.AudioContext=class{createMediaStreamDestination(){return{stream:{getTracks:()=>[{stop:()=>stats.stops++}],getAudioTracks:()=>[{kind:'audio'}]}}}createGain(){return gain}createMediaStreamSource(){return{connect:()=>stats.connections++,disconnect:()=>stats.disconnections++}}async resume(){}async close(){stats.closed++}};
+ try{await run({stats,gain})}finally{if(original)Object.defineProperty(globalThis,'AudioContext',original);else delete globalThis.AudioContext}
+}
+test('microphone can toggle during a recording without replacing the recorded audio track',async()=>withAudioMixer(async({stats,gain})=>{
+ let stream=null;const mixer=await microphoneMixer(()=>stream),recorded=mixer.stream;assert.equal(stats.connections,0);
+ stream={getAudioTracks:()=>[{readyState:'live'}]};mixer.sync();assert.equal(stats.connections,1);mixer.pause();assert.equal(gain.gain.value,0);mixer.resume();assert.equal(gain.gain.value,1);stream=null;mixer.sync();assert.equal(stats.disconnections,1);assert.equal(mixer.stream,recorded);mixer.close();assert.equal(stats.stops,1);assert.equal(stats.closed,1);
+}));
+test('recording with the microphone off never requests microphone permission',async()=>withMovieRuntime(async({options,pump})=>withAudioMixer(async()=>{
+ navigator.mediaDevices.getUserMedia=async()=>{throw new Error('Unexpected microphone request')};const take=await startVoiceRecording({source:options.canvas,width:1080,height:1920,getMicrophoneStream:()=>null});await pump(3);const result=take.stop();await pump();assert.ok((await result).blob.size>0);
+})));
