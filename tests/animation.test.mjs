@@ -259,7 +259,7 @@ test('copy and paste into a later frame gives new identities and preserves inter
  assert.equal(resolveShapes(frames,0).length,2);assert.equal(resolveShapes(frames,1).length,4);const line=pasted.shapes.find(s=>s.type==='line'),circle=pasted.shapes.find(s=>s.type==='circle');assert.equal(line.startLink.id,circle.id);assert.notEqual(circle.id,'circle');clipboard.shapes[0].color='#abcdef';assert.notEqual(pasted.shapes[0].color,'#abcdef');
 });
 // A small canvas transform model checks actual nested draw coordinates and opacity.
-function drawingContext(){let matrix=[1,0,0,1,0,0],alpha=1;const stack=[],drawn=[];const multiply=n=>{const[a,b,c,d,e,f]=matrix,[g,h,i,j,k,l]=n;matrix=[a*g+c*h,b*g+d*h,a*i+c*j,b*i+d*j,a*k+c*l+e,b*k+d*l+f]};const ctx={drawn,get globalAlpha(){return alpha},set globalAlpha(v){alpha=v},save(){stack.push({matrix:[...matrix],alpha})},restore(){({matrix,alpha}=stack.pop())},setTransform(...m){matrix=m},translate(x,y){multiply([1,0,0,1,x,y])},rotate(a){multiply([Math.cos(a),Math.sin(a),-Math.sin(a),Math.cos(a),0,0])},scale(x,y){multiply([x,0,0,y,0,0])},ellipse(x,y){drawn.push({x:matrix[0]*x+matrix[2]*y+matrix[4],y:matrix[1]*x+matrix[3]*y+matrix[5],alpha})},beginPath(){},setLineDash(){},fill(){},stroke(){},fillRect(){}};return ctx}
+function drawingContext(){let matrix=[1,0,0,1,0,0],alpha=1;const stack=[],drawn=[];const multiply=n=>{const[a,b,c,d,e,f]=matrix,[g,h,i,j,k,l]=n;matrix=[a*g+c*h,b*g+d*h,a*i+c*j,b*i+d*j,a*k+c*l+e,b*k+d*l+f]};const ctx={drawn,get globalAlpha(){return alpha},set globalAlpha(v){alpha=v},save(){stack.push({matrix:[...matrix],alpha})},restore(){({matrix,alpha}=stack.pop())},setTransform(...m){matrix=m},transform(...m){multiply(m)},translate(x,y){multiply([1,0,0,1,x,y])},rotate(a){multiply([Math.cos(a),Math.sin(a),-Math.sin(a),Math.cos(a),0,0])},scale(x,y){multiply([x,0,0,y,0,0])},ellipse(x,y){drawn.push({x:matrix[0]*x+matrix[2]*y+matrix[4],y:matrix[1]*x+matrix[3]*y+matrix[5],alpha})},beginPath(){},moveTo(){},lineTo(){},quadraticCurveTo(){},setLineDash(){},fill(){},stroke(){},fillRect(){}};return ctx}
 function nestedScene(){const leaf={...initialFrames[0].changes.circle,id:'leaf',x:0,y:0,w:20,h:20,opacity:.5,rotation:0},child={...leaf,id:'child',type:'symbol',symbolId:'inner',x:10,y:20,w:100,h:100,opacity:.5,timeOffset:0},outer={...child,id:'outer',symbolId:'outer-def',x:100,y:200,w:200,h:200,opacity:.5};return{outer,symbols:{inner:{id:'inner',width:100,height:100,duration:1,easing:'linear',frames:[{id:'i0',changes:{leaf}},{id:'i1',changes:{leaf:{x:100}}}]},'outer-def':{id:'outer-def',width:100,height:100,duration:1,easing:'linear',frames:[{id:'o0',changes:{child}}]}}}}
 test('nested symbols loop independent timelines and compose transforms and opacity',()=>{
  const{outer,symbols}=nestedScene();for(const[time,x]of[[0,140],[.5,240],[1,340],[1.5,240],[2,140],[2.5,240]]){const ctx=drawingContext();drawShape(ctx,outer,{symbols,time});assert.equal(ctx.drawn.length,1);close(ctx.drawn[0],{x,y:260});assert.equal(ctx.drawn[0].alpha,.125)}assert.equal(symbolCycleDuration([outer],symbols),2);
@@ -348,4 +348,52 @@ test('JSON download provides a readable complete project file and releases its o
  try{globalThis.document={body:{appendChild:node=>link=node},createElement:()=>({style:{},click:()=>clicked++,remove:()=>removed++})};globalThis.setTimeout=callback=>{cleanup=callback};URL.createObjectURL=value=>{blob=value;return'blob:test-json'};URL.revokeObjectURL=value=>revoked=value;
   downloadAnimation(savedAnimation());assert.equal(blob.type,'application/json');assert.deepEqual(parseAnimation(await blob.text()),savedAnimation());assert.match(link.download,/^animation-.*\.json$/);assert.equal(link.href,'blob:test-json');assert.equal(clicked,1);assert.equal(removed,1);cleanup();assert.equal(revoked,'blob:test-json');
  }finally{if(original.document)Object.defineProperty(globalThis,'document',original.document);else delete globalThis.document;globalThis.setTimeout=original.setTimeout;URL.createObjectURL=original.create;URL.revokeObjectURL=original.revoke}
+});
+
+import {copyLinkedShapes,canLinkSymbols,breakSymbol} from '../lib/symbols.js';
+import {symbolLocalBounds} from '../lib/editing.js';
+import {symbolMatrix,multiply,IDENTITY,transformPoint,tintColor} from '../lib/matrix.js';
+import {localToWorld,worldToLocal} from '../lib/animation.js';
+test('symbol bounds follow current nested content instead of the original definition rectangle',()=>{
+ const{outer,symbols}=nestedScene();symbols.inner.frames[0].changes.leaf.stroke=0;
+ const a=shapeBounds(outer,{symbols,time:0}),b=shapeBounds(outer,{symbols,time:1});assert.deepEqual(a,{left:120,right:160,top:240,bottom:280});assert.deepEqual(b,{left:320,right:360,top:240,bottom:280});
+ assert.deepEqual(symbolLocalBounds(outer,symbols,1),{left:220,right:260,top:40,bottom:80});symbols.inner.frames[1].changes.leaf.w=100;assert.equal(shapeBounds(outer,{symbols,time:1}).right,520);
+ assert.deepEqual(boxSelectParts([outer],{x:500,y:245},{x:510,y:260},{symbols,time:1}).ids,['outer']);assert.deepEqual(boxSelectParts([outer],{x:105,y:205},{x:110,y:210},{symbols,time:1}).ids,[]);
+});
+test('symbol tint preserves colors at white and multiplies nested tint without changing shared definitions',()=>{
+ assert.equal(tintColor('#123abc','#ffffff'),'#123abc');assert.equal(tintColor('#ffffff','#80ff40'),'#80ff40');assert.equal(tintColor('#808080','#ff8000'),'#804000');
+ const{outer,symbols}=nestedScene();outer.tint='#ff8000';symbols['outer-def'].frames[0].changes.child.tint='#80ffff';symbols.inner.frames[0].changes.leaf.color='#ffffff';const styles=[],ctx=new Proxy({},{get:()=>()=>{},set:(_,key,value)=>{if(key==='fillStyle')styles.push(value);return true}});drawShape(ctx,outer,{symbols,time:0});assert.equal(styles.at(-1),'#808000');assert.equal(symbols.inner.frames[0].changes.leaf.color,'#ffffff');
+ const frames=[{id:'a',changes:{outer:{...outer,tint:'#ffffff'}}},{id:'b',changes:{outer:{tint:'#000000'}}}];assert.equal(interpolateShapes(frames,.5,'linear')[0].tint,'#808080');
+});
+test('linked copies share symbol data while normal pasted copies keep independent definitions',()=>{
+ const{outer,symbols}=nestedScene(),linked=pasteShapes(copyLinkedShapes([outer]),ids(),80,0,{symbols,scope:null}),independent=pasteShapes(copyShapes([outer],symbols),ids(),80,0);
+ assert.equal(linked.shapes[0].symbolId,outer.symbolId);assert.deepEqual(linked.symbols,{});assert.notEqual(independent.shapes[0].symbolId,outer.symbolId);symbols.inner.frames[0].changes.leaf.x=250;
+ const original=drawingContext(),copy=drawingContext(),separate=drawingContext();drawShape(original,outer,{symbols,time:0});drawShape(copy,linked.shapes[0],{symbols,time:0});drawShape(separate,independent.shapes[0],{symbols:independent.symbols,time:0});close(copy.drawn[0],{x:original.drawn[0].x+80,y:original.drawn[0].y+80});assert.notEqual(separate.drawn[0].x,copy.drawn[0].x);
+});
+test('linked symbols cannot create self references directly or through a descendant',()=>{
+ const{outer,symbols}=nestedScene();assert.equal(canLinkSymbols([outer],symbols,null),true);assert.equal(canLinkSymbols([outer],symbols,'outer-def'),false);assert.equal(canLinkSymbols([outer],symbols,'inner'),false);
+ assert.throws(()=>pasteShapes(copyLinkedShapes([outer]),ids(),0,0,{symbols,scope:'inner'}),/cannot be pasted/);assert.equal(canLinkSymbols([{...outer,symbolId:'missing'}],symbols,null),false);
+});
+test('break-apart preserves nested transforms, opacity, tint and earlier frames',()=>{
+ const{outer,symbols}=nestedScene();Object.assign(outer,{rotation:35,w:270,h:150,tint:'#80ff80',matrix:[1,.2,.1,1,40,30]});const frames=[{id:'before',changes:{outer}},{id:'break',changes:{}},{id:'after',changes:{outer:{visible:true,x:700}}}],broken=breakSymbol(frames,1,outer,symbols,ids(),.5);
+ assert.deepEqual(broken.frames[0],frames[0]);for(const i of[1,2])assert.ok(!resolveShapes(broken.frames,i).some(s=>s.id==='outer'));assert.equal(broken.graphics.length,1);assert.equal(broken.graphics[0].symbolId,'inner');assert.equal(broken.graphics[0].tint,'#80ff80');
+ const before=drawingContext(),after=drawingContext();drawShape(before,outer,{symbols,time:.5});for(const s of resolveShapes(broken.frames,1))drawShape(after,s,{symbols,time:.5});close(after.drawn[0],before.drawn[0]);assert.equal(after.drawn[0].alpha,before.drawn[0].alpha);
+});
+test('break-apart reconnects graphics internally and preserves rotated, stretched geometry',()=>{
+ const original=connectedScene(),group=groupIntoSymbol(original,0,['circle','line'],ids()),instance={...group.instance,w:group.instance.w*1.7,h:group.instance.h*.6,rotation:40,tint:'#ff8040'},symbols={[group.definition.id]:group.definition},frames=[{id:'parent',changes:{[instance.id]:instance}}],broken=breakSymbol(frames,0,instance,symbols,()=>`apart-${Math.random()}`,0),scene=resolveShapes(broken.frames,0),circle=scene.find(s=>s.type==='circle'),line=scene.find(s=>s.type==='line');
+ assert.equal(line.startLink.id,circle.id);close(linePoint(line,0),anchorPoint(circle,line.startLink));const children=resolveShapes(group.definition.frames,0),matrix=symbolMatrix(instance,group.definition);for(const key of['start','end','control'])close(lineGeometry(line)[key],transformPoint(matrix,lineGeometry(children.find(s=>s.type==='line'))[key]));
+ for(const point of[{x:0,y:0},{x:circle.w,y:circle.h},{x:50,y:40}])close(worldToLocal(circle,localToWorld(circle,point)),point);
+ const moved=resolveConnections(scene.map(s=>({...s,...moveSelection(scene,30,-10)[s.id]})));close(linePoint(moved.find(s=>s.type==='line'),0),anchorPoint(moved.find(s=>s.type==='circle'),line.startLink));
+ const regroup=groupIntoSymbol(broken.frames,0,scene.map(s=>s.id),()=>`again-${Math.random()}`,1,'linear',symbols),before=drawingContext(),after=drawingContext();drawShape(before,circle);drawShape(after,regroup.instance,{symbols:{...symbols,[regroup.definition.id]:regroup.definition},time:0});close(after.drawn[0],before.drawn[0]);
+});
+test('locked objects cannot enter box selections or be moved by whole-object or point edits',()=>{
+ const circle={...initialFrames[0].changes.circle,id:'locked-circle',locked:true},line={...lineForPoints,locked:true},free={...circle,id:'free',locked:false};assert.deepEqual(boxSelectParts([circle,line,free],{x:-1000,y:-1000},{x:2000,y:2000}),{ids:['free'],points:{}});assert.deepEqual(moveSelection([circle,line],80,40),{});assert.deepEqual(moveParts([line],[],{points:['start','control']},80,40),{});assert.equal(partsBounds([line],[],{points:['start']}),null);
+});
+test('fill and stroke switches are independent and remembered without discarding stroke width',()=>{
+ for(const[fill,strokeVisible,expectedFill,expectedStroke]of[[true,false,true,false],[false,true,false,true],[false,false,false,false],[true,true,true,true]]){const calls=[],ctx=new Proxy({},{get:(_,key)=>(...args)=>calls.push(key),set:()=>true}),shape={...initialFrames[0].changes.circle,fill,strokeVisible};drawShape(ctx,shape);assert.equal(calls.includes('fill'),expectedFill);assert.equal(calls.includes('stroke'),expectedStroke);assert.equal(newShapeStyle('rect',{...DEFAULT_STYLE,fill,strokeVisible}).strokeVisible,strokeVisible)}
+ const shape={...initialFrames[0].changes.circle,id:'circle',strokeVisible:false};assert.equal({...shape,...styleSelection([shape],'stroke',20).circle}.strokeVisible,false);
+});
+test('JSON save and load retain linked symbol identity, tint, locks and transformed graphics',()=>{
+ const state=savedAnimation(),outer=state.project.frames[0].changes.outer;outer.tint='#80ff80';outer.locked=true;outer.matrix=[1,.2,.3,1,20,30];state.project.frames[0].changes.linked={...outer,id:'linked',x:600};state.preferences.drawingStyle.strokeVisible=false;
+ const restored=parseAnimation(serializeAnimation(state));assert.deepEqual(restored,state);assert.equal(restored.project.frames[0].changes.linked.symbolId,restored.project.frames[0].changes.outer.symbolId);assert.equal(restored.preferences.drawingStyle.strokeVisible,false);
 });

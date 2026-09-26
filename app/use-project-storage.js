@@ -18,5 +18,5 @@ export default function useProjectStorage(state,onRestore){
   window.addEventListener('pagehide',flush);document.addEventListener('visibilitychange',hidden);
   return()=>{flush();window.removeEventListener('pagehide',flush);document.removeEventListener('visibilitychange',hidden)};
  },[ready]);
- return{ready,message:error||notice,dismiss:()=>{setNotice('');setError('')}};
+ return{ready,resume:()=>{allowed.current=true;setNotice('');setError('')},message:error||notice,dismiss:()=>{setNotice('');setError('')}};
 }
