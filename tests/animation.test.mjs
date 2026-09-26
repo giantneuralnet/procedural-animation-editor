@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {resolveShapes,interpolateShapes,initialFrames} from '../lib/animation.js';
+import {resolveShapes,interpolateShapes} from '../lib/animation.js';
+import {initialFrames} from './scene-fixture.js';
 test('earlier color changes carry through independent edits until a later explicit color',()=>{const fs=structuredClone(initialFrames);fs[0].changes.circle.color='#ff0000';assert.equal(resolveShapes(fs,1).find(s=>s.id==='circle').color,'#ff0000');assert.equal(resolveShapes(fs,1).find(s=>s.id==='circle').x,400);assert.equal(resolveShapes(fs,2).find(s=>s.id==='circle').color,'#e7aa8d')});
 test('blank added frames inherit resolved properties without freezing them',()=>{const fs=structuredClone(initialFrames);fs.splice(1,0,{id:'new',changes:{}});fs[0].changes.circle.w=180;assert.equal(resolveShapes(fs,1).find(s=>s.id==='circle').w,180);assert.equal(resolveShapes(fs,2).find(s=>s.id==='circle').w,200)});
 test('midpoint interpolates geometry and color',()=>{const fs=structuredClone(initialFrames);fs[0].changes.circle.color='#000000';fs[1].changes.circle.color='#ffffff';const s=interpolateShapes(fs,.5).find(s=>s.id==='circle');assert.equal(s.x,310);assert.equal(s.w,180);assert.equal(s.color,'#808080')});
@@ -25,7 +26,7 @@ import {supportedMovieType,movieDimensions,recordMovie,fitMovieView} from '../li
 test('looped playback transitions from final state back to the resolved first frame',()=>{const fs=structuredClone(initialFrames);const a=resolveShapes(fs,2).find(s=>s.id==='circle'),b=resolveShapes(fs,0).find(s=>s.id==='circle'),middle=interpolateShapes(fs,2.5,'linear',true).find(s=>s.id==='circle');assert.equal(middle.x,(a.x+b.x)/2);assert.equal(middle.w,(a.w+b.w)/2);assert.equal(interpolateShapes(fs,3,'smooth',true).find(s=>s.id==='circle').x,b.x);assert.equal(interpolateShapes(fs,2.5,'linear',false).find(s=>s.id==='circle').x,a.x)});
 test('connections follow targets on the closing transition too',()=>{const fs=connectedScene();const shapes=interpolateShapes(fs,1.5,'smooth',true),line=shapes.find(s=>s.id==='line'),circle=shapes.find(s=>s.id==='circle');close(linePoint(line,0),anchorPoint(circle,line.startLink))});
 test('loop adds exactly one transition to export duration',()=>{assert.equal(movieDuration(3,1,true),3);assert.equal(movieDuration(3,1,false),2);assert.equal(movieDuration(3,.5,true),1.5);assert.equal(movieDuration(1,1,true),1)});
-test('camera settles with grid on the top, left and right edges',()=>{for(const [w,h,baseScale,zoom]of [[390,650,.4375,1.31],[1280,720,1.2,.73],[844,220,.3214,2.8]]){const v=alignCamera({w,h},baseScale,zoom,{x:33.4,y:-53.1}),scale=baseScale*v.zoom,step=80*scale,x=w/2-460*scale+v.pan.x,y=h/2-300*scale+v.pan.y;for(const n of [x/step,y/step,(w-x)/step])assert.ok(Math.abs(n-Math.round(n))<1e-8);assert.ok(v.zoom>=.4&&v.zoom<=4)}});
+test('camera settles with grid on the top, left and right edges',()=>{for(const [w,h,baseScale,zoom]of [[390,650,.4375,1.31],[1280,720,1.2,.73],[844,220,.3214,2.8]]){const v=alignCamera({w,h},baseScale,zoom,{x:33.4,y:-53.1}),scale=baseScale*v.zoom,step=80*scale,x=v.pan.x,y=v.pan.y;for(const n of [x/step,y/step,(w-x)/step])assert.ok(Math.abs(n-Math.round(n))<1e-8);assert.ok(v.zoom>=.4&&v.zoom<=4)}});
 test('grid attraction wins over a nearby off-grid line when distances are similar',()=>{const line={...initialFrames[0].changes.line,id:'target',x:17,y:-80,w:0,h:160,cx:0,cy:80};const result=snapEndpoint([line],{x:7,y:8},'new',1,true);assert.equal(result.kind,'grid');close(result.point,{x:0,y:0});assert.equal(result.link,null)});
 test('deliberate line attachment still works away from a grid intersection',()=>{const line={...initialFrames[0].changes.line,id:'target',x:40,y:0,w:0,h:160,cx:0,cy:80};const result=snapEndpoint([line],{x:42,y:35},'new',1,true);assert.equal(result.link.id,'target');assert.equal(result.kind,'shape');const free=snapEndpoint([line],{x:42,y:35},'new',1,false);close(free.point,{x:42,y:35});assert.equal(free.link,null)});
 test('a line on the grid can stay attached and aligned',()=>{const line={...initialFrames[0].changes.line,id:'target',x:0,y:0,w:160,h:0,cx:80,cy:0};const result=snapEndpoint([line],{x:1,y:2},'new',1,true);assert.equal(result.kind,'shape');close(result.point,{x:0,y:0})});
@@ -176,3 +177,34 @@ test('microphone can toggle during a recording without replacing the recorded au
 test('recording with the microphone off never requests microphone permission',async()=>withMovieRuntime(async({options,pump})=>withAudioMixer(async()=>{
  navigator.mediaDevices.getUserMedia=async()=>{throw new Error('Unexpected microphone request')};const take=await startVoiceRecording({source:options.canvas,width:1080,height:1920,getMicrophoneStream:()=>null});await pump(3);const result=take.stop();await pump();assert.ok((await result).blob.size>0);
 })));
+
+import {initialFrames as blankFrames} from '../lib/animation.js';
+import {DEFAULT_STYLE,DEFAULT_EASING,newShapeStyle} from '../lib/defaults.js';
+import {startingGridScale,drawGrid} from '../lib/view.js';
+import {drawMovieScene} from '../lib/movie-scene.js';
+test('new projects have one empty frame and use linear timing',()=>{
+ assert.equal(blankFrames.length,1);assert.deepEqual(resolveShapes(blankFrames,0),[]);
+ const scene=interpolateShapes(initialFrames,.25,DEFAULT_EASING);assert.equal(scene.find(s=>s.id==='circle').x,265);
+});
+test('new shapes retain independent fill and stroke colors across shape types',()=>{
+ const chosen={...DEFAULT_STYLE,color:'#176688',strokeColor:'#ff9933',stroke:9};
+ for(const type of ['line','circle','rect']){const first=newShapeStyle(type),next=newShapeStyle(type,chosen);assert.equal(first.color,'#000000');assert.equal(first.strokeColor,'#ffffff');assert.equal(next.color,chosen.color);assert.equal(next.strokeColor,chosen.strokeColor);assert.equal(next.stroke,9);assert.equal(next.fill,type!=='line')}
+ assert.equal(DEFAULT_STYLE.color,'#000000');assert.equal(DEFAULT_STYLE.strokeColor,'#ffffff');
+});
+test('the starting grid has exactly twelve columns with lines on both side edges',()=>{
+ for(const width of [320,390,844,1280,1920]){const scale=startingGridScale(width),moves=[],ctx=new Proxy({},{get:(_,key)=>(...args)=>{if(key==='moveTo')moves.push(args)},set:()=>true});drawGrid(ctx,width,600,scale,{x:0,y:0});assert.ok(Math.abs(width/(80*scale)-12)<1e-9);const vertical=moves.filter(p=>p[1]===0);assert.equal(vertical.length,13);assert.equal(vertical[0][0],.5);assert.equal(vertical.at(-1)[0],width-.5)}
+});
+test('portrait and landscape movies extend the grid into the full frame without stretching shapes',()=>{
+ for(const [vw,vh,width,height]of [[390,540,1080,1920],[844,210,1920,1080],[390,900,1080,1920]]){
+  const calls=[],ctx=new Proxy({},{get:(_,key)=>(...args)=>calls.push([key,...args]),set:()=>true}),view={width:vw,height:vh,scale:startingGridScale(vw),origin:{x:0,y:0}};
+  drawMovieScene(ctx,width,height,{view,shapes:resolveShapes(initialFrames,0),includeGrid:true});
+  assert.ok(calls.some(c=>c[0]==='moveTo'&&c[2]===0));assert.ok(calls.some(c=>c[0]==='lineTo'&&c[2]===height));assert.ok(calls.some(c=>c[0]==='lineTo'&&c[1]===width));assert.ok(!calls.some(c=>c[0]==='clip'));
+  const scaleCall=calls.find(c=>c[0]==='scale');assert.equal(scaleCall[1],scaleCall[2]);
+  const fit=fitMovieView(vw,vh,width,height);if(fit.y>0){assert.ok(calls.some(c=>c[0]==='moveTo'&&c[1]===0&&c[2]<fit.y));assert.ok(calls.some(c=>c[0]==='moveTo'&&c[1]===0&&c[2]>height-fit.y))}
+ }
+});
+test('live recording renders the complete procedural scene instead of a letterboxed screen copy',async()=>withMovieRuntime(async({options,pump})=>{
+ const calls=[],ctx=new Proxy({},{get:(_,key)=>(...args)=>calls.push([key,...args]),set:()=>true});options.canvas.getContext=()=>ctx;let reads=0;
+ const take=await startVoiceRecording({source:options.canvas,width:1080,height:1920,getScene:()=>{reads++;return{view:{width:390,height:540,scale:startingGridScale(390),origin:{x:0,y:0}},shapes:resolveShapes(initialFrames,0),includeGrid:true}}});await pump(3);const done=take.stop();await pump();await done;
+ assert.ok(reads>2);assert.ok(!calls.some(c=>c[0]==='drawImage'));assert.ok(calls.some(c=>c[0]==='ellipse'));assert.ok(calls.some(c=>c[0]==='lineTo'&&c[2]===1920));
+}));
