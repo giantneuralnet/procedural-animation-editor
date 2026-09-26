@@ -315,3 +315,37 @@ test('entering symbols centers graphics and fits portrait and landscape cameras'
  }
  assert.deepEqual(centerCamera({w:390,h:650},startingGridScale(390),null),{zoom:1,pan:{x:0,y:0}});
 });
+
+import {DRAFT_KEY,serializeAnimation,parseAnimation,loadDraft,saveDraft,downloadAnimation} from '../lib/project-storage.js';
+function savedAnimation(){const{outer,symbols}=nestedScene();return{project:{frames:[{id:'root',changes:{outer}},{id:'later',changes:{outer:{x:450}}}],symbols,duration:.7,easing:'linear'},preferences:{snap:false,grid:false,loop:false,movieFps:60,drawingStyle:{...DEFAULT_STYLE,fill:true,strokeStyle:'dash-dot',color:'#123456'}},editor:{scope:'inner',path:[{scope:null,frame:1,zoom:2,pan:{x:30,y:40}},{scope:'outer-def',frame:0,zoom:3,pan:{x:100,y:90}}],frame:1,zoom:4,pan:{x:10,y:20}}}}
+function memoryStorage(initial={}){const data=new Map(Object.entries(initial));return{data,getItem:key=>data.get(key)??null,setItem:(key,value)=>data.set(key,value)}}
+test('JSON round trip keeps the complete project, nested timelines, preferences and active symbol view',()=>{
+ const state=savedAnimation(),raw=serializeAnimation(state,true),restored=parseAnimation(raw);assert.deepEqual(restored,state);assert.equal(JSON.parse(raw).format,'procedural-animation');assert.equal(JSON.parse(raw).version,1);assert.ok(raw.includes('\n  "project"'));
+ for(let i=0;i<state.project.frames.length;i++)assert.deepEqual(resolveShapes(restored.project.frames,i),resolveShapes(state.project.frames,i));assert.equal(restored.project.symbols.inner.frames.length,2);
+});
+test('automatic local saves restore the most recent edits and a fresh browser starts blank',()=>{
+ const storage=memoryStorage(),state=savedAnimation();assert.deepEqual(loadDraft(storage),{state:null,canSave:true,notice:''});saveDraft(storage,state);assert.deepEqual(loadDraft(storage).state,state);
+ state.project.symbols.inner.frames[1].changes.leaf.strokeStyle='dotted';state.project.frames[1].changes.outer.x=720;saveDraft(storage,state);const loaded=loadDraft(storage);assert.equal(loaded.state.project.symbols.inner.frames[1].changes.leaf.strokeStyle,'dotted');assert.equal(resolveShapes(loaded.state.project.frames,1)[0].x,720);assert.equal(storage.data.size,1);
+});
+test('saved connected shapes keep attachment IDs, sparse inheritance, order and line kinds',()=>{
+ const state=savedAnimation();state.project.frames=connectedScene();state.project.frames[0].changes.line.lineKind='straight';state.project.frames[0].changes.line.strokeStyle='dashed';state.project.frames[1].changes.line={z:5};state.editor={scope:null,path:[],frame:1,zoom:1,pan:{x:0,y:0}};
+ const restored=parseAnimation(serializeAnimation(state));assert.deepEqual(restored.project.frames,state.project.frames);const scene=resolveShapes(restored.project.frames,1),line=scene.find(s=>s.id==='line'),circle=scene.find(s=>s.id==='circle');close(linePoint(line,0),anchorPoint(circle,line.startLink));assert.equal(line.lineKind,'straight');assert.equal(line.strokeStyle,'dashed');assert.equal(line.z,5);
+});
+test('malformed or unsupported drafts are preserved before a new save can replace them',()=>{
+ for(const raw of['{broken',JSON.stringify({format:'procedural-animation',version:99,project:{}}),JSON.stringify({format:'procedural-animation',version:1,project:{frames:[]}})]){const storage=memoryStorage({[DRAFT_KEY]:raw}),loaded=loadDraft(storage);assert.equal(loaded.state,null);assert.equal(loaded.canSave,true);assert.ok(loaded.notice);assert.equal(storage.getItem(DRAFT_KEY),raw);assert.equal(storage.getItem(DRAFT_KEY+'.recovery'),raw);saveDraft(storage,savedAnimation());assert.equal(storage.getItem(DRAFT_KEY+'.recovery'),raw);assert.deepEqual(loadDraft(storage).state,savedAnimation())}
+});
+test('storage errors preserve the previous draft and allow independent JSON export',()=>{
+ const previous=serializeAnimation(savedAnimation()),storage={getItem:()=>previous,setItem(){throw new DOMException('full','QuotaExceededError')}};assert.deepEqual(loadDraft(storage).state,savedAnimation());assert.throws(()=>saveDraft(storage,savedAnimation()),{name:'QuotaExceededError'});assert.equal(storage.getItem(DRAFT_KEY),previous);assert.ok(serializeAnimation(savedAnimation(),true));
+ assert.equal(loadDraft({...storage,getItem:()=>'{broken'}).canSave,false);assert.ok(loadDraft({getItem(){throw new Error('blocked')}}).notice);
+});
+test('restore validates drawing data and recovers harmless view and preference values',()=>{
+ const state=savedAnimation();state.preferences={movieFps:123,drawingStyle:{color:'invalid',stroke:400},snap:'bad'};state.editor={scope:'missing',path:[{scope:'missing'}],frame:500,zoom:Infinity,pan:{x:'bad',y:40}};
+ const restored=parseAnimation(serializeAnimation(state));assert.equal(restored.preferences.movieFps,30);assert.equal(restored.preferences.drawingStyle.color,'#000000');assert.equal(restored.preferences.drawingStyle.stroke,80);assert.equal(restored.preferences.snap,true);assert.deepEqual(restored.editor,{scope:null,path:[],frame:1,zoom:1,pan:{x:0,y:40}});
+ for(const corrupt of[project=>project.frames[0].changes.outer.x='not a number',project=>project.symbols.inner.frames[0].changes.leaf.color='bad',project=>project.symbols.inner.width=0,project=>project.symbols.inner.frames[0].changes.leaf={...project.frames[0].changes.outer,symbolId:'inner'}]){const broken=savedAnimation();corrupt(broken.project);assert.throws(()=>parseAnimation(serializeAnimation(broken)))}
+});
+test('JSON download provides a readable complete project file and releases its object URL',async()=>{
+ const original={document:Object.getOwnPropertyDescriptor(globalThis,'document'),setTimeout:globalThis.setTimeout,create:URL.createObjectURL,revoke:URL.revokeObjectURL};let blob,clicked=0,removed=0,cleanup,revoked,link;
+ try{globalThis.document={body:{appendChild:node=>link=node},createElement:()=>({style:{},click:()=>clicked++,remove:()=>removed++})};globalThis.setTimeout=callback=>{cleanup=callback};URL.createObjectURL=value=>{blob=value;return'blob:test-json'};URL.revokeObjectURL=value=>revoked=value;
+  downloadAnimation(savedAnimation());assert.equal(blob.type,'application/json');assert.deepEqual(parseAnimation(await blob.text()),savedAnimation());assert.match(link.download,/^animation-.*\.json$/);assert.equal(link.href,'blob:test-json');assert.equal(clicked,1);assert.equal(removed,1);cleanup();assert.equal(revoked,'blob:test-json');
+ }finally{if(original.document)Object.defineProperty(globalThis,'document',original.document);else delete globalThis.document;globalThis.setTimeout=original.setTimeout;URL.createObjectURL=original.create;URL.revokeObjectURL=original.revoke}
+});
