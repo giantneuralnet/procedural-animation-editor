@@ -6,7 +6,7 @@ function Thumbnail({frames,index,symbols,duration}){const ref=useRef(null);useEf
 export default function FrameTimeline({frames,symbols,duration,frame,playing,position,disabled=false,recording=false,onChoose,onAdd,onCopy,onDelete,onReorder}){
  const strip=useRef(null),press=useRef(null),timer=useRef(null);
  const[menu,setMenu]=useState(null),[drag,setDrag]=useState(null);
- function open(index,node){const showMenu=!recording&&!playing&&index===frame;onChoose(index);if(!showMenu){setMenu(null);return}const r=node.getBoundingClientRect();setMenu({id:frames[index].id,x:Math.max(8,Math.min(window.innerWidth-184,r.left+r.width/2-88)),y:r.top-58})}
+ function open(index,node){const showMenu=!recording&&!playing&&index===frame;onChoose(index);if(!showMenu||menu?.id===frames[index].id){setMenu(null);return}const r=node.getBoundingClientRect();setMenu({id:frames[index].id,x:Math.max(8,Math.min(window.innerWidth-184,r.left+r.width/2-88)),y:r.top-58})}
  function destination(x){const cards=[...strip.current.querySelectorAll('[data-frame]')];let best=0,distance=Infinity;cards.forEach((card,i)=>{const r=card.getBoundingClientRect(),d=Math.abs(x-(r.left+r.width/2));if(d<distance){best=i;distance=d}});return best}
  function down(e,index){if(disabled||e.button!==0||press.current)return;e.currentTarget.setPointerCapture(e.pointerId);const p={id:e.pointerId,index,x:e.clientX,y:e.clientY,lastX:e.clientX,lastY:e.clientY,rect:e.currentTarget.getBoundingClientRect(),scroll:strip.current.scrollLeft,active:false,moved:false,node:e.currentTarget};press.current=p;
   if(!recording)timer.current=setTimeout(()=>{if(press.current!==p)return;p.active=true;p.to=index;setMenu(null);setDrag(dragState(p));onChoose(index)},450);

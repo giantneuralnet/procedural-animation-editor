@@ -45,3 +45,8 @@
 @media(max-width:600px){.voice-tools{gap:2px;padding-left:8px;padding-right:8px}.voice-tools button{flex:1 0 46px;min-width:46px}.voice-tools button span{font-size:8px}}
 
 .symbol-exit{position:absolute;left:12px;top:12px;display:flex;align-items:center;gap:8px;padding:10px 12px;border:1px solid #44414d;border-radius:10px;background:#24252de8;color:#d5c9f3;font:inherit;font-size:12px;cursor:pointer;z-index:4}
+
+.tool-bezier{cursor:crosshair}
+.stroke-pattern{display:flex;flex-direction:column;gap:2px;flex:0 0 86px;padding:2px 5px;color:#a9a4b6;font-size:8px;letter-spacing:.03em;border-right:1px solid #ffffff12}
+.stroke-pattern select{height:27px;max-width:80px;background:#1a1c22;border:0;border-radius:4px;color:#e0d7ee;font-size:12px;padding:2px}
+.canvas-menu{position:absolute;z-index:7;width:120px}.canvas-menu button{min-height:44px;width:100%;display:flex;align-items:center;justify-content:center;gap:9px;border-radius:8px;color:#d5d0df}

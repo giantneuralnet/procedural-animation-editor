@@ -240,8 +240,8 @@ test('empty fill is the default and the chosen fill style survives new shapes an
  const empty={...initialFrames[0].changes.circle,id:'empty',fill:false},patch=styleSelection([empty],'color','#aabbcc');assert.equal({...empty,...patch.empty}.fill,false);
 });
 test('zoom adds exactly three finer grid levels and snaps to the visible subdivisions',()=>{
- for(const[zoom,level,spacing]of[[1,0,80],[1.99,0,80],[2,1,40],[4,2,20],[8,3,10],[16,3,10]]){assert.equal(gridLevel(zoom),level);assert.equal(gridSpacing(zoom),spacing);close(snapEndpoint([],{x:spacing+1,y:spacing-1},'new',1,true,spacing).point,{x:spacing,y:spacing})}
- for(const zoom of [.4,.99,1.99,2,2.01,3.99,4,4.01,7.99,8,8.01,16]){const width=390,base=startingGridScale(width),v=alignCamera({w:width,h:650},base,zoom,{x:71,y:-133}),step=gridSpacing(v.zoom)*base*v.zoom;for(const n of[v.pan.x/step,v.pan.y/step,(width-v.pan.x)/step])assert.ok(Math.abs(n-Math.round(n))<1e-8);assert.ok(v.zoom>=.4&&v.zoom<=MAX_ZOOM)}
+ for(const[zoom,level,spacing]of[[1,0,80],[1.24,0,80],[1.25,1,40],[1.74,1,40],[1.75,2,20],[2.49,2,20],[2.5,3,10],[16,3,10]]){assert.equal(gridLevel(zoom),level);assert.equal(gridSpacing(zoom),spacing);close(snapEndpoint([],{x:spacing+1,y:spacing-1},'new',1,true,spacing).point,{x:spacing,y:spacing})}
+ for(const zoom of [.4,.99,1.24,1.25,1.26,1.74,1.75,1.76,2.49,2.5,2.51,4,8,16]){const width=390,base=startingGridScale(width),v=alignCamera({w:width,h:650},base,zoom,{x:71,y:-133}),step=gridSpacing(v.zoom)*base*v.zoom;for(const n of[v.pan.x/step,v.pan.y/step,(width-v.pan.x)/step])assert.ok(Math.abs(n-Math.round(n))<1e-8);assert.ok(v.zoom>=.4&&v.zoom<=MAX_ZOOM)}
 });
 test('grouping retains earlier frames and transfers future member edits into a local timeline',()=>{
  const frames=structuredClone(initialFrames),group=groupIntoSymbol(frames,1,['circle','square'],ids(),.7,'linear');assert.deepEqual(group.frames[0],frames[0]);
@@ -259,7 +259,7 @@ test('copy and paste into a later frame gives new identities and preserves inter
  assert.equal(resolveShapes(frames,0).length,2);assert.equal(resolveShapes(frames,1).length,4);const line=pasted.shapes.find(s=>s.type==='line'),circle=pasted.shapes.find(s=>s.type==='circle');assert.equal(line.startLink.id,circle.id);assert.notEqual(circle.id,'circle');clipboard.shapes[0].color='#abcdef';assert.notEqual(pasted.shapes[0].color,'#abcdef');
 });
 // A small canvas transform model checks actual nested draw coordinates and opacity.
-function drawingContext(){let matrix=[1,0,0,1,0,0],alpha=1;const stack=[],drawn=[];const multiply=n=>{const[a,b,c,d,e,f]=matrix,[g,h,i,j,k,l]=n;matrix=[a*g+c*h,b*g+d*h,a*i+c*j,b*i+d*j,a*k+c*l+e,b*k+d*l+f]};const ctx={drawn,get globalAlpha(){return alpha},set globalAlpha(v){alpha=v},save(){stack.push({matrix:[...matrix],alpha})},restore(){({matrix,alpha}=stack.pop())},setTransform(...m){matrix=m},translate(x,y){multiply([1,0,0,1,x,y])},rotate(a){multiply([Math.cos(a),Math.sin(a),-Math.sin(a),Math.cos(a),0,0])},scale(x,y){multiply([x,0,0,y,0,0])},ellipse(x,y){drawn.push({x:matrix[0]*x+matrix[2]*y+matrix[4],y:matrix[1]*x+matrix[3]*y+matrix[5],alpha})},beginPath(){},fill(){},stroke(){},fillRect(){}};return ctx}
+function drawingContext(){let matrix=[1,0,0,1,0,0],alpha=1;const stack=[],drawn=[];const multiply=n=>{const[a,b,c,d,e,f]=matrix,[g,h,i,j,k,l]=n;matrix=[a*g+c*h,b*g+d*h,a*i+c*j,b*i+d*j,a*k+c*l+e,b*k+d*l+f]};const ctx={drawn,get globalAlpha(){return alpha},set globalAlpha(v){alpha=v},save(){stack.push({matrix:[...matrix],alpha})},restore(){({matrix,alpha}=stack.pop())},setTransform(...m){matrix=m},translate(x,y){multiply([1,0,0,1,x,y])},rotate(a){multiply([Math.cos(a),Math.sin(a),-Math.sin(a),Math.cos(a),0,0])},scale(x,y){multiply([x,0,0,y,0,0])},ellipse(x,y){drawn.push({x:matrix[0]*x+matrix[2]*y+matrix[4],y:matrix[1]*x+matrix[3]*y+matrix[5],alpha})},beginPath(){},setLineDash(){},fill(){},stroke(){},fillRect(){}};return ctx}
 function nestedScene(){const leaf={...initialFrames[0].changes.circle,id:'leaf',x:0,y:0,w:20,h:20,opacity:.5,rotation:0},child={...leaf,id:'child',type:'symbol',symbolId:'inner',x:10,y:20,w:100,h:100,opacity:.5,timeOffset:0},outer={...child,id:'outer',symbolId:'outer-def',x:100,y:200,w:200,h:200,opacity:.5};return{outer,symbols:{inner:{id:'inner',width:100,height:100,duration:1,easing:'linear',frames:[{id:'i0',changes:{leaf}},{id:'i1',changes:{leaf:{x:100}}}]},'outer-def':{id:'outer-def',width:100,height:100,duration:1,easing:'linear',frames:[{id:'o0',changes:{child}}]}}}}
 test('nested symbols loop independent timelines and compose transforms and opacity',()=>{
  const{outer,symbols}=nestedScene();for(const[time,x]of[[0,140],[.5,240],[1,340],[1.5,240],[2,140],[2.5,240]]){const ctx=drawingContext();drawShape(ctx,outer,{symbols,time});assert.equal(ctx.drawn.length,1);close(ctx.drawn[0],{x,y:260});assert.equal(ctx.drawn[0].alpha,.125)}assert.equal(symbolCycleDuration([outer],symbols),2);
@@ -272,4 +272,46 @@ test('copying nested symbols snapshots all definitions and permits a finite past
 test('movie rendering and duration include nested animation on a one-frame main timeline',()=>{
  const{outer,symbols}=nestedScene(),frames=[{id:'root',changes:{outer}}],ctx=drawingContext(),canvas={width:960,height:960,getContext:()=>ctx},view={width:960,height:960,scale:1,origin:{x:0,y:0}};
  assert.equal(movieDuration(1,1,true,symbols,frames),2);createMovieRenderer({canvas,view,frames,symbols,duration:1,loop:true,easing:'linear'})(.5);close(ctx.drawn[0],{x:240,y:260});
+});
+
+import {lineHandles} from '../lib/animation.js';
+import {strokeDash,STROKE_STYLES} from '../lib/defaults.js';
+import {reorderSelection,isGroupSelection} from '../lib/editing.js';
+import {centerCamera} from '../lib/view.js';
+test('straight lines stay straight while endpoints move and only expose two handles',()=>{
+ const straight={...lineForPoints,lineKind:'straight',rotation:25},before=lineGeometry(straight);
+ assert.deepEqual(Object.keys(lineHandles(straight)),['start','end']);close(linePoint(straight,.5),{x:(before.start.x+before.end.x)/2,y:(before.start.y+before.end.y)/2});
+ const changes=moveParts([straight],[],{points:['end']},80,40),moved={...straight,...changes.points},geometry=lineGeometry(moved);close(geometry.start,before.start);close(geometry.end,{x:before.end.x+80,y:before.end.y+40});close(linePoint(moved,.5),{x:(geometry.start.x+geometry.end.x)/2,y:(geometry.start.y+geometry.end.y)/2});
+ const flat={...straight,rotation:0};assert.deepEqual(boxSelectParts([flat],{x:75,y:115},{x:85,y:125}),{ids:[],points:{}});assert.deepEqual(boxSelectParts([flat],{x:75,y:-5},{x:85,y:5}),{ids:[],points:{}});
+});
+test('Bézier curves retain their independent bend handle and straight lines accept shape connections',()=>{
+ const curve={...lineForPoints,lineKind:'bezier'};assert.deepEqual(Object.keys(lineHandles(curve)),['start','end','control']);assert.equal(linePoint(curve,.5).y,60);
+ const fs=connectedScene();fs[0].changes.line.lineKind='straight';for(const t of[0,.5,1]){const scene=interpolateShapes(fs,t),line=scene.find(s=>s.id==='line'),circle=scene.find(s=>s.id==='circle'),geometry=lineGeometry(line);close(geometry.start,anchorPoint(circle,line.startLink));close(linePoint(line,.5),{x:(geometry.start.x+geometry.end.x)/2,y:(geometry.start.y+geometry.end.y)/2})}
+});
+test('stroke patterns render on shapes and both line types, reset for solid, and survive copying',()=>{
+ assert.deepEqual(STROKE_STYLES.map(([key])=>key),['solid','dashed','dotted','dash-dot']);assert.deepEqual(strokeDash('solid',4),[]);assert.deepEqual(strokeDash('dashed',4),[16,12]);assert.deepEqual(strokeDash('dotted',4),[0,10]);assert.deepEqual(strokeDash('dash-dot',4),[16,8,0,8]);
+ for(const type of['circle','rect','line'])for(const style of STROKE_STYLES.map(([key])=>key)){
+  const calls=[],ctx=new Proxy({},{get:(_,key)=>(...args)=>calls.push([key,...args]),set:()=>true}),shape={...lineForPoints,type,strokeStyle:style,lineKind:'straight'};
+  drawShape(ctx,shape);assert.deepEqual(calls.find(c=>c[0]==='setLineDash')[1],strokeDash(style,shape.stroke));if(type==='line'){assert.ok(calls.some(c=>c[0]==='lineTo'));assert.ok(!calls.some(c=>c[0]==='quadraticCurveTo'))}
+  const pasted=pasteShapes(copyShapes([shape],{}),ids()).shapes[0];assert.equal(pasted.strokeStyle,style);assert.equal(pasted.lineKind,'straight');assert.equal(newShapeStyle(type,{...DEFAULT_STYLE,strokeStyle:style}).strokeStyle,style);
+ }
+});
+test('stroke pattern changes inherit through frames and apply to every selected shape',()=>{
+ const fs=structuredClone(initialFrames),scene=resolveShapes(fs,0);for(const[id,patch]of Object.entries(styleSelection(scene,'strokeStyle','dashed')))fs[0].changes[id]={...fs[0].changes[id],...patch};fs[2].changes.circle.strokeStyle='dotted';
+ assert.ok(resolveShapes(fs,1).every(s=>s.strokeStyle==='dashed'));assert.equal(resolveShapes(fs,2).find(s=>s.id==='circle').strokeStyle,'dotted');assert.equal(resolveShapes(fs,2).find(s=>s.id==='line').strokeStyle,'dashed');
+});
+test('layer arrows move a selection one step and preserve relative order and inheritance',()=>{
+ const shapes=Array.from({length:5},(_,i)=>({...initialFrames[0].changes.circle,id:String(i),z:i})),frames=[{id:'a',changes:Object.fromEntries(shapes.map(s=>[s.id,s]))},{id:'b',changes:{}}];
+ frames[1].changes=reorderSelection(shapes,['1','2'],'up');assert.deepEqual(resolveShapes(frames,1).map(s=>s.id),['0','3','1','2','4']);assert.deepEqual(resolveShapes(frames,0).map(s=>s.id),['0','1','2','3','4']);
+ frames.push({id:'c',changes:{'0':{color:'#112233'}}});assert.deepEqual(resolveShapes(frames,2).map(s=>s.id),['0','3','1','2','4']);
+ frames[2].changes={...frames[2].changes,...reorderSelection(resolveShapes(frames,1),['1','2'],'down')};assert.deepEqual(resolveShapes(frames,2).map(s=>s.id),['0','1','2','3','4']);assert.deepEqual(reorderSelection(shapes,['4'],'up'),{});assert.deepEqual(reorderSelection(shapes,['0'],'down'),{});
+});
+test('multi-selection drag mode includes mixed objects and points without counting a point twice',()=>{
+ assert.equal(isGroupSelection(['a','b'],{}),true);assert.equal(isGroupSelection([],{a:['start','end']}),true);assert.equal(isGroupSelection(['a'],{b:['control']}),true);assert.equal(isGroupSelection(['a'],{a:['start','end']}),false);assert.equal(isGroupSelection([],{a:['control']}),false);
+});
+test('entering symbols centers graphics and fits portrait and landscape cameras',()=>{
+ for(const size of[{w:390,h:650},{w:844,h:230}])for(const bounds of[{left:-300,top:150,right:900,bottom:750},{left:2,top:2,right:162,bottom:162}]){
+  const base=startingGridScale(size.w),camera=centerCamera(size,base,bounds),scale=base*camera.zoom;close({x:camera.pan.x+(bounds.left+bounds.right)*scale/2,y:camera.pan.y+(bounds.top+bounds.bottom)*scale/2},{x:size.w/2,y:size.h/2});assert.ok((bounds.right-bounds.left)*scale<size.w);assert.ok((bounds.bottom-bounds.top)*scale<size.h);
+ }
+ assert.deepEqual(centerCamera({w:390,h:650},startingGridScale(390),null),{zoom:1,pan:{x:0,y:0}});
 });
