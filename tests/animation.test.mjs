@@ -28,8 +28,8 @@ test('connections follow targets on the closing transition too',()=>{const fs=co
 test('loop adds exactly one transition to export duration',()=>{assert.equal(movieDuration(3,1,true),3);assert.equal(movieDuration(3,1,false),2);assert.equal(movieDuration(3,.5,true),1.5);assert.equal(movieDuration(1,1,true),1)});
 test('camera settles with grid on the top, left and right edges',()=>{for(const [w,h,baseScale,zoom]of [[390,650,.4375,1.31],[1280,720,1.2,.73],[844,220,.3214,2.8]]){const v=alignCamera({w,h},baseScale,zoom,{x:33.4,y:-53.1}),scale=baseScale*v.zoom,step=gridSpacing(v.zoom)*scale,x=v.pan.x,y=v.pan.y;for(const n of [x/step,y/step,(w-x)/step])assert.ok(Math.abs(n-Math.round(n))<1e-8);assert.ok(v.zoom>=.4&&v.zoom<=MAX_ZOOM)}});
 test('grid attraction wins over a nearby off-grid line when distances are similar',()=>{const line={...initialFrames[0].changes.line,id:'target',x:17,y:-80,w:0,h:160,cx:0,cy:80};const result=snapEndpoint([line],{x:7,y:8},'new',1,true);assert.equal(result.kind,'grid');close(result.point,{x:0,y:0});assert.equal(result.link,null)});
-test('deliberate line attachment still works away from a grid intersection',()=>{const line={...initialFrames[0].changes.line,id:'target',x:40,y:0,w:0,h:160,cx:0,cy:80};const result=snapEndpoint([line],{x:42,y:35},'new',1,true);assert.equal(result.link.id,'target');assert.equal(result.kind,'shape');const free=snapEndpoint([line],{x:42,y:35},'new',1,false);close(free.point,{x:42,y:35});assert.equal(free.link,null)});
-test('a line on the grid can stay attached and aligned',()=>{const line={...initialFrames[0].changes.line,id:'target',x:0,y:0,w:160,h:0,cx:80,cy:0};const result=snapEndpoint([line],{x:1,y:2},'new',1,true);assert.equal(result.kind,'shape');close(result.point,{x:0,y:0})});
+test('line snapping works away from a grid intersection without an attachment',()=>{const line={...initialFrames[0].changes.line,id:'target',x:40,y:0,w:0,h:160,cx:0,cy:80};const result=snapEndpoint([line],{x:42,y:35},'new',1,true);assert.equal(result.link,null);assert.equal(result.kind,'shape');assert.ok(Math.abs(result.point.x-40)<.001);const free=snapEndpoint([line],{x:42,y:35},'new',1,false);close(free.point,{x:42,y:35});assert.equal(free.link,null)});
+test('a line on the grid can snap and align without attachment',()=>{const line={...initialFrames[0].changes.line,id:'target',x:0,y:0,w:160,h:0,cx:80,cy:0};const result=snapEndpoint([line],{x:1,y:2},'new',1,true);assert.equal(result.kind,'shape');close(result.point,{x:0,y:0})});
 test('movie format prefers MP4 but negotiates WebM for other encoders',()=>{assert.equal(supportedMovieType({isTypeSupported:type=>type==='video/mp4'}),'video/mp4');assert.equal(supportedMovieType({isTypeSupported:type=>type==='video/webm;codecs=vp8'}),'video/webm;codecs=vp8');assert.equal(supportedMovieType({isTypeSupported:()=>false}),null);assert.equal(supportedMovieType(null),null)});
 test('movies use full HD in the selected device orientation',()=>{assert.deepEqual(movieDimensions(390,650),{width:1080,height:1920});assert.deepEqual(movieDimensions(1280,650),{width:1920,height:1080});assert.deepEqual(movieDimensions(500,450,'portrait'),{width:1080,height:1920});const fit=fitMovieView(390,650,1080,1920);assert.equal(fit.x,0);assert.ok(fit.y>0);assert.ok(Math.abs(390*fit.scale-1080)<.001)});
 
@@ -327,9 +327,12 @@ test('automatic local saves restore the most recent edits and a fresh browser st
  const storage=memoryStorage(),state=savedAnimation();assert.deepEqual(loadDraft(storage),{state:null,canSave:true,notice:''});saveDraft(storage,state);assert.deepEqual(loadDraft(storage).state,state);
  state.project.symbols.inner.frames[1].changes.leaf.strokeStyle='dotted';state.project.frames[1].changes.outer.x=720;saveDraft(storage,state);const loaded=loadDraft(storage);assert.equal(loaded.state.project.symbols.inner.frames[1].changes.leaf.strokeStyle,'dotted');assert.equal(resolveShapes(loaded.state.project.frames,1)[0].x,720);assert.equal(storage.data.size,1);
 });
-test('saved connected shapes keep attachment IDs, sparse inheritance, order and line kinds',()=>{
+test('loading saved attachments preserves frame geometry but makes later edits independent',()=>{
  const state=savedAnimation();state.project.frames=connectedScene();state.project.frames[0].changes.line.lineKind='straight';state.project.frames[0].changes.line.strokeStyle='dashed';state.project.frames[1].changes.line={z:5};state.editor={scope:null,path:[],frame:1,zoom:1,pan:{x:0,y:0}};
- const restored=parseAnimation(serializeAnimation(state));assert.deepEqual(restored.project.frames,state.project.frames);const scene=resolveShapes(restored.project.frames,1),line=scene.find(s=>s.id==='line'),circle=scene.find(s=>s.id==='circle');close(linePoint(line,0),anchorPoint(circle,line.startLink));assert.equal(line.lineKind,'straight');assert.equal(line.strokeStyle,'dashed');assert.equal(line.z,5);
+ const restored=parseAnimation(serializeAnimation(state));
+ for(let i=0;i<state.project.frames.length;i++){const before=resolveShapes(state.project.frames,i).find(s=>s.id==='line'),after=resolveShapes(restored.project.frames,i).find(s=>s.id==='line');for(const key of ['start','end','control'])close(lineGeometry(after)[key],lineGeometry(before)[key]);assert.ok(!after.startLink&&!after.endLink)}
+ const line=resolveShapes(restored.project.frames,1).find(s=>s.id==='line');assert.equal(line.lineKind,'straight');assert.equal(line.strokeStyle,'dashed');assert.equal(line.z,5);
+ restored.project.frames[1].changes.circle.x+=500;assert.deepEqual(lineGeometry(resolveShapes(restored.project.frames,1).find(s=>s.id==='line')),lineGeometry(line));
 });
 test('malformed or unsupported drafts are preserved before a new save can replace them',()=>{
  for(const raw of['{broken',JSON.stringify({format:'procedural-animation',version:99,project:{}}),JSON.stringify({format:'procedural-animation',version:1,project:{frames:[]}})]){const storage=memoryStorage({[DRAFT_KEY]:raw}),loaded=loadDraft(storage);assert.equal(loaded.state,null);assert.equal(loaded.canSave,true);assert.ok(loaded.notice);assert.equal(storage.getItem(DRAFT_KEY),raw);assert.equal(storage.getItem(DRAFT_KEY+'.recovery'),raw);saveDraft(storage,savedAnimation());assert.equal(storage.getItem(DRAFT_KEY+'.recovery'),raw);assert.deepEqual(loadDraft(storage).state,savedAnimation())}
@@ -410,10 +413,10 @@ test('rotation keeps shape center fixed and interpolates without shrinking geome
  close(localToWorld(turned,{x:s.w/2,y:s.h/2}),center);assert.equal(turned.rotation,90);
  const fs=[{id:'a',changes:{turn:s}},{id:'b',changes:{turn:patch}},{id:'c',changes:{}}],mid=interpolateShapes(fs,.5,'linear')[0];assert.equal(mid.rotation,45);assert.equal(mid.w,s.w);assert.equal(mid.h,s.h);assert.equal(resolveShapes(fs,2)[0].rotation,90);
 });
-test('rotation uses actual symbol content center and keeps the handle below visible content at each zoom',()=>{
- const{outer,symbols}=nestedScene(),scene={symbols,time:.5},b=shapeBounds(outer,scene),control=rotationControl(outer,.4,scene),pivot=worldToLocal(outer,control.center);
- assert.equal(control.base.y,b.bottom);assert.equal(control.handle.y-b.bottom,85);assert.equal(rotationControl(outer,2,scene).handle.y-b.bottom,17);
- const rotated={...outer,...rotateShape(outer,control.center,67)};close(localToWorld(rotated,pivot),control.center);assert.equal(rotated.symbolId,outer.symbolId);
+test('rotation uses symbol content center and a fixed screen gap at every zoom',()=>{
+ const{outer,symbols}=nestedScene(),scene={symbols,time:.5},control=rotationControl(outer,.4,scene),pivot=worldToLocal(outer,control.center);
+ assert.ok(Math.abs(Math.hypot(control.handle.x-control.base.x,control.handle.y-control.base.y)-85)<1e-8);const zoomed=rotationControl(outer,2,scene);assert.ok(Math.abs(Math.hypot(zoomed.handle.x-zoomed.base.x,zoomed.handle.y-zoomed.base.y)-17)<1e-8);
+ const rotated={...outer,...rotateShape(outer,control.center,67)};close(localToWorld(rotated,pivot),control.center);assert.equal(rotated.symbolId,outer.symbolId);close(rotationControl(rotated,.4,scene).center,control.center);
 });
 test('rotation preserves affine transforms and uses pointer angles in their parent coordinates',()=>{
  const s={...initialFrames[0].changes.circle,matrix:[2,.5,.3,1.5,70,-25],rotation:30},pivot={x:20,y:30},center=localToWorld(s,pivot),rotated={...s,...rotateShape(s,center,90)};
@@ -423,4 +426,21 @@ test('rotation preserves affine transforms and uses pointer angles in their pare
 test('rotated lines keep attached endpoints constrained while their free geometry changes',()=>{
  const fs=connectedScene(),scene=resolveShapes(fs,0),line=scene.find(s=>s.type==='line'),control=rotationControl(line,1);fs[1].changes.line=rotateShape(line,control.center,45);
  const result=resolveShapes(fs,1),l=result.find(s=>s.id==='line'),circle=result.find(s=>s.id==='circle');close(linePoint(l,0),anchorPoint(circle,l.startLink));assert.notDeepEqual(linePoint(l,1),linePoint(line,1));
+});
+
+import {detachProject} from '../lib/attachments.js';
+test('rotation handle turns with the shape and stays exactly at the active touch',()=>{
+ const s={...initialFrames[0].changes.circle,type:'rect',rotation:0},original=rotationControl(s,1),rotated={...s,...rotateShape(s,original.center,90)},turned=rotationControl(rotated,1);
+ close(turned.center,original.center);close(turned.handle,{x:original.center.x-(original.handle.y-original.center.y),y:original.center.y});
+ for(const pointer of [{x:25,y:78},{x:-120,y:140},{x:900,y:-60}])close(rotationControl(rotated,1,{},pointer).handle,pointer);
+});
+test('legacy attachments in nested shared symbols are detached once and retain all frame positions',()=>{
+ const state=savedAnimation(),frames=connectedScene();state.project.symbols.inner.frames=frames;
+ const migrated=detachProject(state.project);assert.equal(state.project.symbols.inner.frames[0].changes.line.startLink.id,'circle');
+ for(let i=0;i<frames.length;i++)for(const key of ['start','end','control'])close(lineGeometry(resolveShapes(migrated.symbols.inner.frames,i).find(s=>s.id==='line'))[key],lineGeometry(resolveShapes(frames,i).find(s=>s.id==='line'))[key]);
+ assert.equal(migrated.frames[0].changes.outer.symbolId,state.project.frames[0].changes.outer.symbolId);assert.deepEqual(detachProject(migrated),migrated);assert.ok(!JSON.stringify(migrated.symbols.inner.frames).includes('startLink'));
+});
+test('snapping to circle or line positions never creates an attachment',()=>{
+ const scene=resolveShapes(connectedScene(),0);
+ for(const point of [{x:0,y:52},{x:252,y:51}]){const snapped=snapEndpoint(scene,point,'new',1,true);assert.equal(snapped.kind,'shape');assert.equal(snapped.link,null)}
 });
