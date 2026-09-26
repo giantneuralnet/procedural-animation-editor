@@ -3,14 +3,14 @@ import {useRef,useState,useEffect} from 'react';
 import {ChevronLeft,ChevronRight,Pause,Play,Circle,Check,Mic} from 'lucide-react';
 import {startVoiceRecording} from '../lib/voiceover';
 import {movieDimensions} from '../lib/movie';
-export default function Voiceover({canvasRef,frame,frameCount,fps,orientation,onFrame,onPaused,onDone}){
+export default function Voiceover({getCameraOverlay,canvasRef,frame,frameCount,fps,orientation,onFrame,onPaused,onDone}){
  const[status,setStatus]=useState('ready'),[seconds,setSeconds]=useState(0),[error,setError]=useState('');
  const session=useRef(null),controller=useRef(null),closed=useRef(false),statusRef=useRef('ready');
  function state(next){statusRef.current=next;setStatus(next);onPaused(next==='paused')}
  useEffect(()=>{closed.current=false;return()=>{closed.current=true;controller.current?.abort();session.current?.cancel()}},[]);
  async function record(){if(session.current||statusRef.current==='requesting')return;setError('');state('requesting');const abort=new AbortController();controller.current=abort;try{
   const source=canvasRef.current,dimensions=movieDimensions(source.width,source.height,orientation);
-  const take=await startVoiceRecording({source,...dimensions,fps,signal:abort.signal,onState:state,onTime:setSeconds});session.current=take;
+  const take=await startVoiceRecording({getCameraOverlay,source,...dimensions,fps,signal:abort.signal,onState:state,onTime:setSeconds});session.current=take;
   take.result.then(movie=>{if(!closed.current)onDone(movie)}).catch(error=>{if(!closed.current&&error.name!=='AbortError'){setError(error.message);session.current=null;state('ready')}});
  }catch(error){if(!closed.current&&error.name!=='AbortError'){setError(error.message);state('ready')}}}
  function pause(){if(status==='paused')session.current?.resume();else session.current?.pause()}

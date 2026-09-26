@@ -58,3 +58,42 @@ test('pausing voiceover disables the microphone and resuming enables it again',a
 test('voiceover pauses automatically when the page becomes hidden',async()=>withMovieRuntime(async({options,pump,listeners,audio})=>{const take=await startVoiceRecording({source:options.canvas,width:1080,height:1920});await pump(3);document.hidden=true;listeners.get('visibilitychange')();assert.equal(audio.enabled,false);const promise=take.stop();await pump();await promise}));
 test('cancelled microphone permission requests release a late microphone grant',async()=>withMovieRuntime(async({options,stats,audio})=>{let grant;navigator.mediaDevices.getUserMedia=()=>new Promise(resolve=>{grant=resolve});const controller=new AbortController();const promise=startVoiceRecording({source:options.canvas,width:1080,height:1920,signal:controller.signal});const rejected=assert.rejects(promise,{name:'AbortError'});controller.abort();grant(new MediaStream([audio]));await rejected;assert.equal(stats.micStopped,1);assert.equal(stats.fps,undefined)}));
 test('microphone denial gives a recoverable message',async()=>withMovieRuntime(async({options})=>{navigator.mediaDevices.getUserMedia=async()=>{throw new DOMException('denied','NotAllowedError')};await assert.rejects(startVoiceRecording({source:options.canvas,width:1080,height:1920}),/Microphone access was denied/)}));
+
+import {cameraRect,cameraPosition,openFrontCamera,drawCameraOverlay} from '../lib/camera.js';
+test('camera dragging stays within mobile and landscape canvas edges after resizing',()=>{
+ for(const [w,h] of [[390,620],[844,210],[1920,850],[120,90]]){
+  for(const position of [{x:0,y:0},{x:1,y:1},{x:-5,y:20}]){
+   const rect=cameraRect(w,h,position);assert.ok(rect.x>=0&&rect.y>=0);assert.ok(rect.x+rect.width<=w);assert.ok(rect.y+rect.height<=h);
+   assert.deepEqual(cameraPosition(rect,w,h,-1000,10000),{x:0,y:1});
+  }
+ }
+});
+test('front camera requests video only and releases a grant after cancellation',async()=>{
+ let grant,constraints,stopped=0;const mediaDevices={getUserMedia:value=>{constraints=value;return new Promise(resolve=>grant=resolve)}},controller=new AbortController();
+ const promise=openFrontCamera({mediaDevices,signal:controller.signal}),rejected=assert.rejects(promise,{name:'AbortError'});controller.abort();grant({getTracks:()=>[{stop:()=>stopped++}]});await rejected;
+ assert.equal(constraints.audio,false);assert.equal(constraints.video.facingMode.ideal,'user');assert.equal(stopped,1);
+});
+test('camera permission denial gives a recoverable error',async()=>{
+ await assert.rejects(openFrontCamera({mediaDevices:{getUserMedia:async()=>{throw new DOMException('Denied','NotAllowedError')}}}),/Camera access was denied/);
+});
+const fakeCamera=()=>({video:{readyState:2,videoWidth:640,videoHeight:480},rect:{x:100,y:20,width:120,height:160,radius:15},sourceWidth:390,sourceHeight:650});
+test('camera composition covers its rounded window, mirrors the image, and scales to HD',()=>{
+ const calls=[],ctx=new Proxy({},{get:(_,method)=>(...args)=>calls.push([method,...args]),set:()=>true}),overlay=fakeCamera();
+ drawCameraOverlay(ctx,overlay,1080,1920);
+ const image=calls.find(c=>c[0]==='drawImage');assert.deepEqual(image.slice(2),[140,0,360,480,0,0,120,160]);
+ assert.ok(calls.find(c=>c[0]==='scale'&&c[1]===-1&&c[2]===1));assert.ok(calls.find(c=>c[0]==='scale'&&c[1]===1080/390));
+ assert.ok(calls.findIndex(c=>c[0]==='clip')<calls.findIndex(c=>c[0]==='drawImage'));assert.equal(calls.filter(c=>c[0]==='roundRect').length,2);
+});
+test('interrupted camera never burns a stale image into the recording',()=>{
+ const calls=[],ctx=new Proxy({},{get:(_,method)=>(...args)=>calls.push([method,...args]),set:()=>true});
+ drawCameraOverlay(ctx,{...fakeCamera(),paused:true},1080,1920);assert.ok(!calls.some(c=>c[0]==='drawImage'));assert.ok(calls.some(c=>c[0]==='fillText'));
+});
+test('movie export composites the live camera on each rendered frame',async()=>withMovieRuntime(async({options,pump})=>{
+ let reads=0;const videoFrames=[],ctx=new Proxy({},{get:(_,method)=>(...args)=>{if(method==='drawImage')videoFrames.push(args[0])},set:()=>true});options.canvas.getContext=()=>ctx;
+ const overlay=fakeCamera(),promise=recordMovie({...options,getCameraOverlay:()=>{reads++;return overlay}});await pump();await promise;assert.ok(reads>2);assert.equal(videoFrames.length,reads);assert.ok(videoFrames.every(video=>video===overlay.video));
+}));
+test('voiceover composites camera movement live without including preview controls',async()=>withMovieRuntime(async({options,pump})=>{
+ const calls=[],ctx=new Proxy({},{get:(_,method)=>(...args)=>calls.push([method,...args]),set:()=>true});options.canvas.getContext=()=>ctx;
+ const overlay=fakeCamera(),take=await startVoiceRecording({source:options.canvas,width:1080,height:1920,getCameraOverlay:()=>overlay});await pump(3);overlay.rect.x=210;await pump(3);const promise=take.stop();await pump();await promise;
+ assert.ok(calls.some(c=>c[0]==='roundRect'&&c[1]===100));assert.ok(calls.some(c=>c[0]==='roundRect'&&c[1]===210));assert.ok(calls.some(c=>c[0]==='drawImage'&&c[1]===overlay.video));
+}));
