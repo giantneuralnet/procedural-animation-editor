@@ -500,3 +500,29 @@ test('selection scale and rotation transform chosen curve points without moving 
  const s=brushShape(),line={...initialFrames[0].changes.line,id:'line',lineKind:'straight'},shapes=[s,line],points={brush:['p1','p2'],line:['end']},m=rotationMatrix({x:0,y:0},45),changes=transformParts(shapes,[],points,m);
  for(const shape of shapes){const before=lineHandles(shape),after=lineHandles({...shape,...changes[shape.id]});for(const[key,p]of Object.entries(before))close(after[key],points[shape.id].includes(key)?transformPoint(m,p):p)}
 });
+
+import {selectionBounds} from '../lib/editing.js';
+import {importedImage,importedAnimation} from '../lib/importing.js';
+import {validImageSource,loadImage,preloadImages,imageSources,imageBitmap} from '../lib/images.js';
+const testImageSource='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/F9sAAAAASUVORK5CYII=';
+test('imported images preserve aspect ratio, fit the view and round-trip inside saved animation files',()=>{
+ const image=importedImage({src:testImageSource,width:1200,height:600,name:'Photo'},{x:200,y:150},{w:300,h:300},ids());assert.equal(image.w,300);assert.equal(image.h,150);assert.equal(image.x,50);assert.equal(image.y,75);assert.equal(image.type,'image');
+ const state=savedAnimation();state.project.frames=[{id:'first',changes:{[image.id]:image}},{id:'next',changes:{[image.id]:{x:250,rotation:90}}}];state.editor={scope:null,path:[],frame:0,zoom:1,pan:{x:0,y:0}};
+ assert.deepEqual(parseAnimation(serializeAnimation(state)).project.frames,state.project.frames);const mid=interpolateShapes(state.project.frames,.5,'linear')[0];assert.equal(mid.x,150);assert.equal(mid.rotation,45);assert.equal(mid.src,testImageSource);
+ assert.equal(validImageSource('https://example.com/photo.png'),false);assert.equal(validImageSource('data:image/svg+xml;base64,AAAA'),false);const broken=structuredClone(state);broken.project.frames[0].changes[image.id].src='javascript:alert(1)';assert.throws(()=>parseAnimation(serializeAnimation(broken)));
+ const copied=pasteShapes(copyShapes([image],{}),ids());assert.equal(copied.shapes[0].src,testImageSource);assert.deepEqual(boxSelectParts([image],{x:40,y:60},{x:400,y:300}).ids,[image.id]);
+});
+test('imported animation files become independent symbols with sparse frames, timing and nested definitions intact',()=>{
+ const saved=savedAnimation(),original=structuredClone(saved);saved.project.frames[0].timeMultiplier=.5;const imported=importedAnimation(saved,{x:400,y:300},2,ids()),instance=imported.shapes[0],definition=imported.symbols[instance.symbolId];
+ assert.equal(instance.timeOffset,-2);assert.equal(definition.frames.length,2);assert.equal(definition.frames[0].timeMultiplier,.5);assert.notEqual(instance.symbolId,'outer-def');assert.equal(Object.keys(imported.symbols).length,3);
+ for(let i=0;i<2;i++){const source=resolveShapes(saved.project.frames,i)[0],nested=resolveShapes(definition.frames,i)[0];assert.notEqual(nested.symbolId,source.symbolId);assert.equal(nested.opacity,source.opacity);assert.equal(nested.x,source.x)}
+ assert.deepEqual(saved.project.symbols,original.project.symbols);assert.throws(()=>importedAnimation({project:{frames:[{id:'blank',changes:{}}],symbols:{},duration:1,easing:'linear'}},{x:0,y:0},0,ids()),/no graphics/);
+});
+test('animation import preserves affine resets and positions across every frame',()=>{
+ const shape={...initialFrames[0].changes.circle,id:'a',matrix:[1,0,0,1,40,80]},frames=[{id:'a',changes:{a:shape}},{id:'b',changes:{a:{matrix:null,x:240}}}],saved={project:{frames,symbols:{},duration:1,easing:'linear'}},originalBounds=selectionBounds(frames.flatMap((_,i)=>resolveShapes(frames,i))),imported=importedAnimation(saved,{x:0,y:0},0,ids()),root=imported.shapes[0],definition=imported.symbols[root.symbolId];
+ for(let i=0;i<2;i++){const before=resolveShapes(frames,i)[0],after=resolveShapes(definition.frames,i)[0];for(const point of[{x:0,y:0},{x:20,y:30}]){const a=localToWorld(before,point),b=localToWorld(after,point);close(b,{x:a.x-originalBounds.left,y:a.y-originalBounds.top})}}
+});
+test('image decoding is shared and ready before image-bearing movies can render',async()=>{
+ const Original=globalThis.Image;let loads=0;globalThis.Image=class{constructor(){this.naturalWidth=2;this.naturalHeight=1}set src(value){loads++;queueMicrotask(()=>this.onload())}};
+ try{const a=loadImage(testImageSource),b=loadImage(testImageSource);assert.equal(a,b);await a;const image=importedImage({src:testImageSource,width:2,height:1,name:'Photo'},{x:0,y:0},{w:10,h:10},ids()),project={frames:[{id:'f',changes:{[image.id]:image}}],symbols:{}};await preloadImages(project);assert.equal(loads,1);assert.deepEqual(imageSources(project),[testImageSource]);assert.ok(imageBitmap(testImageSource));const calls=[],ctx=new Proxy({},{get:(_,key)=>(...args)=>calls.push([key,...args]),set:()=>true});drawShape(ctx,image);assert.equal(calls.filter(call=>call[0]==='drawImage').length,1)}finally{if(Original===undefined)delete globalThis.Image;else globalThis.Image=Original}
+});

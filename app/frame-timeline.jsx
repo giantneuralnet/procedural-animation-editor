@@ -1,9 +1,10 @@
 'use client';
 import {useState,useEffect,useRef} from 'react';
+import useImages from './use-images';
 import {Plus,Copy,Trash2} from 'lucide-react';
 import {FRAME_TIMES,frameMultiplier,frameStart} from '../lib/timing';
 import {resolveShapes,drawShape} from '../lib/animation';
-function Thumbnail({frames,index,symbols,duration}){const ref=useRef(null);useEffect(()=>{const ctx=ref.current.getContext('2d');ctx.clearRect(0,0,180,180);ctx.save();ctx.translate(0,25);ctx.scale(.19,.19);resolveShapes(frames,index).forEach(s=>drawShape(ctx,s,{symbols,time:frameStart(frames,index,duration)}));ctx.restore()},[frames,index,symbols,duration]);return <canvas ref={ref} width="180" height="180"/>}
+function Thumbnail({frames,index,symbols,duration}){const ref=useRef(null),imageVersion=useImages();useEffect(()=>{const ctx=ref.current.getContext('2d');ctx.clearRect(0,0,180,180);ctx.save();ctx.translate(0,25);ctx.scale(.19,.19);resolveShapes(frames,index).forEach(s=>drawShape(ctx,s,{symbols,time:frameStart(frames,index,duration)}));ctx.restore()},[frames,index,symbols,duration,imageVersion]);return <canvas ref={ref} width="180" height="180"/>}
 export default function FrameTimeline({frames,symbols,duration,frame,playing,position,disabled=false,recording=false,onChoose,onAdd,onCopy,onDelete,onReorder,onTiming}){
  const strip=useRef(null),press=useRef(null),timer=useRef(null);
  const[menu,setMenu]=useState(null),[drag,setDrag]=useState(null);
