@@ -60,11 +60,11 @@ export default function Editor(){
  recordingView.current={width:size.w,height:size.h,scale,origin,gridLevel:level};
  const getRecordingScene=useCallback(()=>({view:recordingView.current,shapes:voiceScene.current,includeGrid:viewRef.current.grid,symbols:projectRef.current.symbols,time:voiceTime.current}),[]);
  viewRef.current={size,baseScale,zoom,pan,scale,origin,snap,grid};voiceModeRef.current=voiceMode;
- const snapshot=()=>JSON.stringify({project:projectRef.current,scope,path,frame,zoom,pan});
+ const snapshot=()=>({project:projectRef.current,scope,path,frame,zoom,pan});
  const remember=()=>{setHistory(h=>[...h.slice(-49),snapshot()]);setFuture([])};
  useEffect(()=>{void preloadImages(project).catch(()=>setProjectError('An imported image could not be loaded.'))},[project]);
  function clearSelection(){setSelected([]);setSelectedPoints({});setCanvasMenu(null);setStyleOpen(false)}
- function restore(value){const state=JSON.parse(value);setProject(state.project);setScope(state.scope);setPath(state.path);setFrame(state.frame);setPosition(state.frame);setSceneTime(frameStart(timelineOf(state.project,state.scope).frames,state.frame,timelineOf(state.project,state.scope).duration));setZoom(state.zoom);setPan(state.pan);clearSelection();setPlaying(false);setTouchPreview(null)}
+ function restore(state){setProject(state.project);setScope(state.scope);setPath(state.path);setFrame(state.frame);setPosition(state.frame);setSceneTime(frameStart(timelineOf(state.project,state.scope).frames,state.frame,timelineOf(state.project,state.scope).duration));setZoom(state.zoom);setPan(state.pan);clearSelection();setPlaying(false);setTouchPreview(null)}
  function applyDocument(saved){camera.close();setPlaying(false);setVoiceMode(false);setVoicePaused(false);setRecordedMovie(null);setExportOpen(false);setSettings(false);setLocksOpen(false);setProjectError('');setDownloadError('');setClipboard(null);clearSelection();setTool('select');setTouchPreview(null);setSnapHint(null);gesture.current=null;pointers.current.clear();clearTimeout(wheelTimer.current);lastTap.current=null;
   const p=saved.preferences,e=saved.editor;setProject(saved.project);setScope(e.scope);setPath(e.path);setFrame(e.frame);setPosition(e.frame);setSceneTime(frameStart(timelineOf(saved.project,e.scope).frames,e.frame,timelineOf(saved.project,e.scope).duration));setZoom(e.zoom);setPan(e.pan);setDrawingStyle(p.drawingStyle);setSnap(p.snap);setGrid(p.grid);setMovieFps(p.movieFps);storage.resume();
  }

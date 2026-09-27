@@ -31,7 +31,7 @@ npm start
 
 Photos are resized to at most 1600 pixels on their longest side and embedded as image data in the project. Images move, resize, rotate, copy, animate, and render inside symbols and movies. Native photo/file pickers depend on the device and browser; unsupported image formats produce a message.
 
-Projects automatically save to local storage on this device. Save JSON makes a portable backup containing images, timelines, and symbol definitions. Browser storage limits apply; the editor offers a JSON backup if automatic saving fails.
+Projects automatically save to IndexedDB on this device, with safe migration from earlier localStorage saves. Each distinct image is stored once per saved project, including in portable JSON backups. Version 1 files remain supported; image-containing exports use version 2 with a shared image table. Saves commit atomically and in order. Browser storage limits still apply; the editor keeps the previous save and offers a JSON backup if saving fails.
 
 ## Movies and recording
 
