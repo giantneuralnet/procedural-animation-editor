@@ -662,3 +662,16 @@ test('page scroll lock leaves slider touch input and native control gestures unc
 test('page scrolling remains blocked outside controls without interfering with handled canvas gestures',()=>{
  let prevented=0;const event={cancelable:true,target:{closest:()=>null},preventDefault(){prevented++}};stopPageScroll(event);assert.equal(prevented,1);stopPageScroll({...event,defaultPrevented:true});stopPageScroll({...event,cancelable:false});assert.equal(prevented,1);
 });
+
+import {elasticView,stepElasticScroll,frameScrollTarget} from '../lib/elastic-scroll.js';
+test('frame-strip overscroll is resisted at both edges while the actual scroll position stays in bounds',()=>{
+ assert.deepEqual(elasticView(100,500),{scroll:100,offset:0});const left=elasticView(-100,500),right=elasticView(600,500);assert.equal(left.scroll,0);assert.equal(right.scroll,500);assert.ok(left.offset>0&&left.offset<100);assert.equal(right.offset,-left.offset);assert.ok(elasticView(-10000,500).offset<=72);assert.deepEqual(elasticView(-100,500,true),{scroll:0,offset:0});
+});
+test('elastic scrolling springs precisely back to either edge and settles after a fling',()=>{
+ for(const [position,velocity,max,target]of [[-100,0,500,0],[630,1,500,500],[450,3,500,500],[-100,0,0,0]]){let state={position,velocity};for(let i=0;i<500&&!state.done;i++)state=stepElasticScroll(state,max,16);assert.equal(state.done,true);assert.equal(state.position,target);assert.equal(state.velocity,0)}
+ let state={position:200,velocity:.7};for(let i=0;i<500&&!state.done;i++)state=stepElasticScroll(state,1000,16);assert.ok(state.position>200&&state.position<1000);assert.equal(state.done,true);
+});
+test('new frames reveal the add button at the right, while ordinary selection only reveals the selected card',()=>{
+ const viewport={left:0,right:300},card={left:120,right:196};assert.equal(frameScrollTarget({previousCount:4,count:5,canAdd:true,current:0,max:220,viewport,card}),220);assert.equal(frameScrollTarget({previousCount:4,count:5,canAdd:true,current:0,max:0,viewport,card}),0);
+ assert.equal(frameScrollTarget({previousCount:5,count:5,canAdd:true,current:100,max:400,viewport,card}),100);assert.equal(frameScrollTarget({previousCount:5,count:5,canAdd:true,current:100,max:400,viewport,card:{left:320,right:396}}),196);assert.equal(frameScrollTarget({previousCount:4,count:5,canAdd:false,current:100,max:400,viewport,card}),100);
+});

@@ -65,3 +65,5 @@
 .number-input{-webkit-user-select:text;user-select:text;-webkit-touch-callout:default}
 
 html,body{position:fixed;inset:0;max-width:100%;overflow:hidden;overscroll-behavior:none}.editor{position:fixed;inset:0;overflow:hidden;overscroll-behavior:none}.tool-scroll,.frame-strip,.shape-menu,.voice-tools,.modal{overscroll-behavior:contain}.frame-menu .frame-camera{flex-basis:100%;width:100%}
+
+.frame-scroll-viewport{overflow:hidden;min-width:0;flex-shrink:0}.frame-scroll-viewport .frame-strip{touch-action:none;overscroll-behavior:none;will-change:transform}.frame-scroll-viewport .add-frame{touch-action:manipulation}
