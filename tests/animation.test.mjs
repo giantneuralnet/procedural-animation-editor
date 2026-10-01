@@ -342,7 +342,7 @@ test('storage errors preserve the previous draft and allow independent JSON expo
  assert.equal(loadDraft({...storage,getItem:()=>'{broken'}).canSave,false);assert.ok(loadDraft({getItem(){throw new Error('blocked')}}).notice);
 });
 test('restore validates drawing data and recovers harmless view and preference values',()=>{
- const state=savedAnimation();state.preferences={movieFps:123,drawingStyle:{color:'invalid',stroke:400},snap:'bad'};state.editor={scope:'missing',path:[{scope:'missing'}],frame:500,zoom:Infinity,pan:{x:'bad',y:40}};
+ const state=savedAnimation();state.preferences={movieFps:12.3,drawingStyle:{color:'invalid',stroke:400},snap:'bad'};state.editor={scope:'missing',path:[{scope:'missing'}],frame:500,zoom:Infinity,pan:{x:'bad',y:40}};
  const restored=parseAnimation(serializeAnimation(state));assert.equal(restored.preferences.movieFps,30);assert.equal(restored.preferences.drawingStyle.color,'#000000');assert.equal(restored.preferences.drawingStyle.stroke,80);assert.equal(restored.preferences.snap,true);assert.deepEqual(restored.editor,{scope:null,path:[],frame:1,zoom:1,pan:{x:0,y:40}});
  for(const corrupt of[project=>project.frames[0].changes.outer.x='not a number',project=>project.symbols.inner.frames[0].changes.leaf.color='bad',project=>project.symbols.inner.width=0,project=>project.symbols.inner.frames[0].changes.leaf={...project.frames[0].changes.outer,symbolId:'inner'}]){const broken=savedAnimation();corrupt(broken.project);assert.throws(()=>parseAnimation(serializeAnimation(broken)))}
 });
@@ -570,4 +570,35 @@ test('closed smoothing removes and restores control points without breaking the 
 test('post-draw point reduction is independent of zoom and handles tiny or repeated paths',()=>{
  const path=Array.from({length:61},(_,i)=>({x:i*5,y:Math.sin(i/5)*30})),base=smoothFreeformPath(path,false,.8,1);for(const scale of [.4,3,8]){const transformed=path.map(p=>({x:p.x/scale,y:p.y/scale})),smooth=smoothFreeformPath(transformed,false,.8,scale);assert.equal(smooth.length,base.length);smooth.forEach((p,i)=>close({x:p.x*scale,y:p.y*scale},base[i]))}
  for(const path of [[{x:0,y:0},{x:0,y:0},{x:0,y:0}],[{x:0,y:0},{x:1,y:0},{x:0,y:1}]]){const smooth=smoothFreeformPath(path,true,1);assert.ok(smooth.length>=3&&smooth.every(p=>Number.isFinite(p.x)&&Number.isFinite(p.y)))}
+});
+
+import {normalizeFps,normalizeDuration,NumberDraft} from '../lib/number-values.js';
+import {shareMovieFile} from '../lib/sharing.js';
+test('custom FPS accepts all positive safe integers and survives project restore',()=>{
+ for(const fps of [1,8,12,17,23,48,75,123,240,1000]){assert.equal(normalizeFps(fps),fps);assert.equal(normalizeFps(String(fps)),fps);const saved=savedAnimation();saved.preferences.movieFps=fps;assert.equal(parseAnimation(serializeAnimation(saved)).preferences.movieFps,fps)}
+ for(const value of ['',0,-3,2.5,NaN,Infinity,'text',Number.MAX_SAFE_INTEGER+1])assert.equal(normalizeFps(value),30);
+});
+test('numeric drafts allow deletion and partial numbers without altering the committed value',()=>{
+ const field=new NumberDraft(1);field.focused=true;
+ for(const text of ['', '.', '0.', '0.0', '0.05', '12.', '12.25']){field.edit(text);field.sync(1);assert.equal(field.text,text);assert.equal(field.value,1)}
+ const committed=field.commit(normalizeDuration);assert.deepEqual(committed,{value:12.25,changed:true});assert.equal(field.text,'12.25');field.edit('');assert.equal(field.text,'');field.focused=false;assert.deepEqual(field.commit(normalizeDuration),{value:1,changed:true});
+ assert.equal(normalizeDuration('0.025'),.025);assert.equal(normalizeDuration('120'),120);
+});
+test('number fields preserve active edits across external updates and commit FPS only when finished',()=>{
+ const field=new NumberDraft(30);field.focused=true;field.edit('');field.sync(60);assert.equal(field.text,'');field.edit('8');assert.equal(field.value,60);assert.deepEqual(field.commit(normalizeFps),{value:8,changed:true});assert.deepEqual(field.commit(normalizeFps),{value:8,changed:false});
+ field.edit('garbage');field.cancel();assert.equal(field.text,'8');field.focused=false;field.sync(17);assert.equal(field.text,'17');field.focused=true;field.edit('');assert.deepEqual(field.commit(normalizeFps),{value:30,changed:true});
+ const stroke=new NumberDraft(8);stroke.focused=true;stroke.edit('');stroke.sync(8);assert.equal(stroke.text,'');stroke.edit('12.5');assert.equal(stroke.commit(parseStrokeWidth).value,12.5);
+});
+test('8 FPS export produces eight animation samples per second without changing frame durations',async()=>{
+ const start={...initialFrames[0].changes.circle,id:'circle',x:0,y:0,w:20,h:20},frames=[{id:'a',changes:{circle:start}},{id:'b',timeMultiplier:.5,changes:{circle:{x:80}}},{id:'c',changes:{circle:{x:120}}}],ctx=drawingContext(),canvas={width:960,height:960,getContext:()=>ctx},view={width:960,height:960,scale:1,origin:{x:0,y:0}},seconds=movieDuration(frames.length,1,true,{},frames),{library,stats}=fakeEncoder();
+ const movie=await encodeAnimation({canvas,seconds,fps:8,draw:createMovieRenderer({canvas,view,frames,duration:1,loop:true,easing:'linear'})},library);
+ assert.equal(seconds,1.5);assert.equal(movie.seconds,1.5);assert.equal(movie.fps,8);assert.equal(stats.metadata.frameRate,8);assert.equal(stats.timestamps.length,12);assert.equal(stats.timestamps.filter(([time])=>time<1).length,8);assert.equal(stats.timestamps.filter(([time])=>time>=1).length,4);stats.timestamps.forEach(([time,duration],i)=>{assert.equal(time,i/8);assert.equal(duration,1/8)});ctx.drawn.forEach((p,i)=>close(p,{x:10+i*10,y:10}));
+ const twoSeconds=framePlan(2,8);assert.equal(twoSeconds.count,16);assert.equal(twoSeconds.seconds,2);
+});
+test('real-time capture also receives an arbitrary FPS instead of resetting it to 30',async()=>withMovieRuntime(async({options,pump,stats})=>{const promise=recordMovie({...options,fps:8});await pump();const movie=await promise;assert.equal(stats.fps,8);assert.equal(movie.fps,8)}));
+test('movie sharing sends the actual movie file and offers fallback without downloading on cancel',async()=>{
+ const file=new File(['movie'],'animation.mp4',{type:'video/mp4'});let payload;
+ assert.equal(await shareMovieFile(file,{canShare:()=>true,share:async data=>{payload=data}}),'shared');assert.deepEqual(payload,{files:[file]});
+ assert.equal(await shareMovieFile(file,{}),'unavailable');assert.equal(await shareMovieFile(file,{canShare:()=>false,share:()=>assert.fail('must not share an unsupported file')}),'unavailable');
+ assert.equal(await shareMovieFile(file,{canShare:()=>true,share:async()=>{throw new DOMException('Cancelled','AbortError')}}),'cancelled');assert.equal(await shareMovieFile(file,{canShare:()=>true,share:async()=>{throw new Error('Unavailable')}}),'unavailable');
 });

@@ -2,22 +2,24 @@
 import useImages from './use-images';
 import {useState,useRef,useEffect} from 'react';
 import {X,Film} from 'lucide-react';
-import {recordMovie,supportedMovieType,movieDimensions,MOVIE_FPS,createMovieRenderer} from '../lib/movie';
+import {recordMovie,supportedMovieType,movieDimensions,createMovieRenderer} from '../lib/movie';
+import NumberInput from './number-input';
+import {normalizeFps} from '../lib/number-values';
 import {movieDuration} from '../lib/view';
 import {MovieSaveActions} from './movie-save';
 export default function MovieExport({getCameraOverlay,frames,symbols,duration,loop,easing,view,fps,onFpsChange,onClose}){
  const imageVersion=useImages();
  const[snapshot]=useState(()=>({frames:structuredClone(frames),symbols:structuredClone(symbols),duration,loop,easing,view:{...view,origin:{...view.origin}}}));
  const[includeGrid,setIncludeGrid]=useState(false),[progress,setProgress]=useState(0),[busy,setBusy]=useState(false),[result,setResult]=useState(null),[error,setError]=useState(''),[mode,setMode]=useState('');
- const canvas=useRef(null),abortRef=useRef(null),dialog=useRef(null);
+ const canvas=useRef(null),abortRef=useRef(null),dialog=useRef(null),fpsInput=useRef(null);
  const dimensions=movieDimensions(snapshot.view.width,snapshot.view.height,snapshot.view.orientation),type=supportedMovieType(),fastAvailable=typeof globalThis.VideoEncoder!=='undefined',extension=fastAvailable&&!getCameraOverlay?.()?'MP4':type?.includes('mp4')?'MP4':'WebM';
  useEffect(()=>{dialog.current.querySelector('button').focus();const key=e=>{if(e.key==='Escape')onClose();if(e.key==='Tab'){const nodes=[...dialog.current.querySelectorAll('button:not(:disabled),input:not(:disabled),select:not(:disabled),a[href],video')];const first=nodes[0],last=nodes.at(-1);if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus()}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus()}}};window.addEventListener('keydown',key);return()=>{window.removeEventListener('keydown',key);abortRef.current?.abort()}},[]);
  useEffect(()=>()=>{if(result)URL.revokeObjectURL(result.url)},[result]);
  useEffect(()=>{if(busy||result||!canvas.current)return;let raf,last=0;const draw=()=>{createMovieRenderer({...snapshot,canvas:canvas.current,includeGrid,getCameraOverlay})(0);const tick=now=>{if(now-last>=33){last=now;draw()}else raf=requestAnimationFrame(tick)};if(getCameraOverlay?.())raf=requestAnimationFrame(tick)};draw();return()=>cancelAnimationFrame(raf)},[snapshot,includeGrid,busy,result,getCameraOverlay,imageVersion]);
- async function start(){setError('');setBusy(true);setProgress(0);const controller=new AbortController();abortRef.current=controller;try{const movie=await recordMovie({...snapshot,getCameraOverlay,canvas:canvas.current,includeGrid,fps,signal:controller.signal,onProgress:setProgress,onMode:setMode});setResult({...movie,url:URL.createObjectURL(movie.blob),filename:`animation.${movie.extension}`})}catch(error){if(error.name!=='AbortError')setError(error.message)}finally{setBusy(false)}}
+ async function start(){const exportFps=fpsInput.current?.commit()??fps;setError('');setBusy(true);setProgress(0);const controller=new AbortController();abortRef.current=controller;try{const movie=await recordMovie({...snapshot,getCameraOverlay,canvas:canvas.current,includeGrid,fps:exportFps,signal:controller.signal,onProgress:setProgress,onMode:setMode});setResult({...movie,url:URL.createObjectURL(movie.blob),filename:`animation.${movie.extension}`})}catch(error){if(error.name!=='AbortError')setError(error.message)}finally{setBusy(false)}}
  return <div className="modal-backdrop" onClick={onClose}><div className="modal movie-modal" role="dialog" aria-modal="true" aria-labelledby="movie-title" ref={dialog} onClick={e=>e.stopPropagation()}><div className="modal-heading"><h2 id="movie-title">Export movie</h2><button className="icon-button" aria-label="Close movie export" onClick={onClose}><X size={20}/></button></div>{result?<video className="movie-preview" controls playsInline src={result.url}/>:<canvas className="movie-preview" ref={canvas} width={dimensions.width} height={dimensions.height}/>}
  <div className="movie-details"><span>{dimensions.width} × {dimensions.height}</span><span>{movieDuration(snapshot.frames.length,duration,loop,snapshot.symbols,snapshot.frames).toFixed(1)} s · {result?.frameRateMode==='variable'?`${fps} fps target`:`${fps} fps`} · {result?.extension?.toUpperCase()||extension}</span></div>
- {!result&&<label className="settings-row"><span>Frame rate</span><select aria-label="Movie frame rate" value={fps} disabled={busy} onChange={e=>onFpsChange(Number(e.target.value))}>{MOVIE_FPS.map(value=><option key={value} value={value}>{value} fps</option>)}</select></label>}
+ {!result&&<label className="settings-row"><span>Frame rate</span><NumberInput ref={fpsInput} aria-label="Movie frame rate" inputMode="numeric" value={fps} disabled={busy} onCommit={onFpsChange} parse={normalizeFps}/></label>}
  {!result&&<label className="settings-row"><span>Include grid</span><input type="checkbox" checked={includeGrid} disabled={busy} onChange={e=>setIncludeGrid(e.target.checked)}/></label>}
  {error&&<p className="export-error" role="alert">{error}</p>}
  {!type&&!fastAvailable&&<p className="export-error" role="alert">Movie export is unavailable in this browser. Try Safari or Chrome.</p>}

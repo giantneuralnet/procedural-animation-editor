@@ -36,7 +36,7 @@ Projects automatically save to IndexedDB on this device, with safe migration fro
 
 ## Movies and recording
 
-Export portrait 1080×1920 or landscape 1920×1080 movies. Compatible browsers use accelerated fixed-frame-rate MP4 encoding; others use real-time capture. Recording mode supports microphone audio and a draggable front-camera overlay. Camera and microphone require a secure origin (HTTPS or localhost), browser support, and permission.
+Export portrait 1080×1920 or landscape 1920×1080 movies at any positive integer FPS. FPS controls sampling, independently of seconds per frame and frame timing multipliers: a one-second transition at 8 FPS produces eight movie frames. Numeric text fields commit on blur or Enter, leaving blank and partial entries untouched while typing. Compatible browsers use accelerated fixed-frame-rate MP4 encoding; others use real-time capture. Recording mode supports microphone audio and a draggable front-camera overlay. Use Share movie to open the device share sheet; a download fallback is offered if file sharing is unavailable. Camera and microphone require a secure origin (HTTPS or localhost), browser support, and permission.
 
 ## Structure and hosting
 
