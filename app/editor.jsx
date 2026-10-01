@@ -31,6 +31,7 @@ import {normalizeFps,normalizeDuration} from '../lib/number-values';
 import {hasCameraFrames,resolveCamera,interpolateCamera,mixCamera,cameraFromView,cameraToView,cameraFrameEdits} from '../lib/timeline-camera';
 import {viewWithCamera} from '../lib/movie-scene';
 import {playbackClock} from '../lib/recording-clock';
+import {stopPageScroll} from '../lib/page-scroll';
 const uid=()=>Math.random().toString(36).slice(2,10);
 const toolList=[['select',MousePointer2,'Select','V'],['freeform',PenTool,'Freeform pen','P'],['brush',Brush,'Brush','D'],['line',Minus,'Straight line','L'],['bezier',Spline,'Bézier line','B'],['circle',Circle,'Circle','O'],['rect',Square,'Square','R']];
 function IconButton({icon:Icon,label,active,className='',...props}){return <button type="button" className={`icon-button ${active?'active':''} ${className}`} title={label} aria-label={label} aria-pressed={active===undefined?undefined:active} {...props}><Icon size={20} strokeWidth={1.65}/></button>}
@@ -135,7 +136,6 @@ export default function Editor(){
  function finishVoice(movie){camera.close();voiceTween.current=null;setVoiceMode(false);setVoicePaused(false);setPosition(frame);setSceneTime(voiceTime.current);if(movie)setRecordedMovie(movie)}
  useEffect(()=>{if(!voiceMode||voicePaused)return;let raf;const started=performance.now(),sample=playbackClock(movieFps,voiceTime.current),tick=now=>{const time=sample((now-started)/1000);if(time!==null){const elapsed=(time-voiceTime.current)*1000;voiceTime.current=time;const tween=voiceTween.current;if(tween){tween.elapsed+=elapsed;const t=Math.min(1,tween.elapsed/(tween.duration*1000));voiceScene.current=interpolateScene(tween.from,tween.to,t,easing);if(tween.cameraFrom&&tween.cameraTo)voiceCamera.current=mixCamera(tween.cameraFrom,tween.cameraTo,t,easing);if(t===1)voiceTween.current=null}renderScene.current?.()}raf=requestAnimationFrame(tick)};raf=requestAnimationFrame(tick);return()=>cancelAnimationFrame(raf)},[voiceMode,voicePaused,duration,easing,movieFps]);
  useEffect(()=>{
-  const stopPageScroll=e=>{if(!e.target.closest?.('.tool-scroll,.frame-strip,.shape-menu,.voice-tools,.modal')&&e.cancelable)e.preventDefault()};
   document.addEventListener('touchmove',stopPageScroll,{passive:false});document.addEventListener('wheel',stopPageScroll,{passive:false});
   return()=>{document.removeEventListener('touchmove',stopPageScroll);document.removeEventListener('wheel',stopPageScroll)};
  },[]);

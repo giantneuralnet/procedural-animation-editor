@@ -652,3 +652,13 @@ test('live playback preserves real-time durations after stalled frames and uses 
  const frames=[{id:'a',changes:{},camera:{x:0,y:0,zoom:1}},{id:'b',changes:{},camera:{x:80,y:0,zoom:2}}],sample=playbackClock(8),samples=[];for(let i=0;i<60;i++){const seconds=sample(i/60);if(seconds!==null)samples.push({seconds,camera:interpolateCamera(frames,timelinePosition(frames,seconds,1)),symbol:timelinePosition(frames,seconds,.5)})}assert.equal(samples.length,8);samples.forEach(({seconds,camera,symbol})=>{assert.equal(camera.x,seconds*80);assert.equal(symbol,(seconds%.5)*2)});
  for(const fps of [1,12,17,24,30,60]){const next=playbackClock(fps);assert.equal(Array.from({length:240},(_,i)=>next(i/240)).filter(t=>t!==null).length,fps)}
 });
+
+import {stopPageScroll} from '../lib/page-scroll.js';
+test('page scroll lock leaves slider touch input and native control gestures uncancelled',()=>{
+ for(const local of ['input','.smoothness-control','select','textarea','.modal','.tool-scroll','.frame-strip','.shape-menu','.voice-tools']){let prevented=false;stopPageScroll({cancelable:true,target:{closest:selectors=>selectors.split(',').includes(local)?{}:null},preventDefault(){prevented=true}});assert.equal(prevented,false,local)}
+ // A label's text node resolves through its containing control too.
+ let prevented=false;stopPageScroll({cancelable:true,target:{parentElement:{closest:selectors=>selectors.includes('.smoothness-control')?{}:null}},preventDefault(){prevented=true}});assert.equal(prevented,false);
+});
+test('page scrolling remains blocked outside controls without interfering with handled canvas gestures',()=>{
+ let prevented=0;const event={cancelable:true,target:{closest:()=>null},preventDefault(){prevented++}};stopPageScroll(event);assert.equal(prevented,1);stopPageScroll({...event,defaultPrevented:true});stopPageScroll({...event,cancelable:false});assert.equal(prevented,1);
+});
