@@ -556,3 +556,18 @@ test('freeform copies and symbols preserve paths, smoothing, closure and saved f
  const s=penShape(),copied=pasteShapes(copyShapes([s],{}),ids()).shapes[0];assert.deepEqual(copied.path,s.path);assert.equal(copied.closed,true);assert.equal(copied.smoothness,s.smoothness);const frames=[{id:'a',changes:{pen:s}}],grouped=groupIntoSymbol(frames,0,['pen'],ids()),child=resolveShapes(grouped.definition.frames,0)[0];for(const t of [0,.2,.5,.85,1])close(transformPoint(symbolMatrix(grouped.instance,grouped.definition),linePoint(child,t)),linePoint(s,t));const state=savedAnimation();state.project.frames=frames;state.editor={scope:null,path:[],frame:0,zoom:1,pan:{x:0,y:0}};assert.deepEqual(parseAnimation(serializeAnimation(state)).project.frames,frames);
  for(const patch of [{path:[]},{path:[{x:0,y:NaN},{x:3,y:4},{x:4,y:5}]},{smoothness:2},{closed:'yes'}]){state.project.frames=[{id:'a',changes:{pen:{...s,...patch}}}];assert.throws(()=>parseAnimation(serializeAnimation(state)))}
 });
+
+import {smoothFreeformPath} from '../lib/freeform.js';
+test('post-draw smoothing removes actual anchors, visibly reduces jitter, and restores the original detail',()=>{
+ const path=Array.from({length:81},(_,i)=>({x:i*5,y:i===0||i===80?0:i%2?14:-14})),original=structuredClone(path),smooth=smoothFreeformPath(path,false,1,1),medium=smoothFreeformPath(path,false,.5,1);
+ assert.ok(smooth.length<path.length/4);assert.ok(medium.length<path.length);assert.ok(smooth.every(p=>Math.abs(p.y)<4));close(smooth[0],path[0]);close(smooth.at(-1),path.at(-1));
+ assert.deepEqual(smoothFreeformPath(path,false,0,1),original);assert.deepEqual(path,original);assert.deepEqual(smoothFreeformPath(path,false,1,1),smooth);
+});
+test('closed smoothing removes and restores control points without breaking the seam or losing the shape',()=>{
+ const path=Array.from({length:100},(_,i)=>{const a=i/100*Math.PI*2,r=100+(i%2?4:-4);return{x:Math.cos(a)*r,y:Math.sin(a)*r}}),smooth=smoothFreeformPath(path,true,1,1),s={...penShape(),x:0,y:0,w:200,h:200,path:smooth};assert.ok(smooth.length>=3&&smooth.length<20);close(linePoint(s,0),linePoint(s,1));assert.ok(smooth.every(p=>Math.hypot(p.x,p.y)>80));assert.deepEqual(smoothFreeformPath(path,true,0,1),path);
+ const dense=freeformGeometry([...path,path[0]],1,true,0);assert.ok(dense.path.length>90);const frames=[{id:'a',changes:{pen:s}},{id:'b',changes:{pen:{path:s.path.map((p,i)=>i===1?{x:p.x+30,y:p.y-10}:p)}}}];const mid=interpolateShapes(frames,.5,'linear')[0];close(mid.path[1],{x:s.path[1].x+15,y:s.path[1].y-5});close(linePoint(mid,0),linePoint(mid,1));
+});
+test('post-draw point reduction is independent of zoom and handles tiny or repeated paths',()=>{
+ const path=Array.from({length:61},(_,i)=>({x:i*5,y:Math.sin(i/5)*30})),base=smoothFreeformPath(path,false,.8,1);for(const scale of [.4,3,8]){const transformed=path.map(p=>({x:p.x/scale,y:p.y/scale})),smooth=smoothFreeformPath(transformed,false,.8,scale);assert.equal(smooth.length,base.length);smooth.forEach((p,i)=>close({x:p.x*scale,y:p.y*scale},base[i]))}
+ for(const path of [[{x:0,y:0},{x:0,y:0},{x:0,y:0}],[{x:0,y:0},{x:1,y:0},{x:0,y:1}]]){const smooth=smoothFreeformPath(path,true,1);assert.ok(smooth.length>=3&&smooth.every(p=>Number.isFinite(p.x)&&Number.isFinite(p.y)))}
+});

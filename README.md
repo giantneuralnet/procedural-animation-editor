@@ -20,7 +20,7 @@ npm start
 ## Editing
 
 - Draw straight lines, Bézier curves, brush strokes, freeform pen shapes, circles, and rectangles.
-- Use the Freeform pen (P) and finish within 18 screen pixels of the start to close an outline. Select it to adjust the Smoothness slider above the tools; drag or box-select its control points to reshape it. Point positions and smoothness animate between frames. Closed outlines support fill and stroke styles.
+- Use the Freeform pen (P) and finish within 18 screen pixels of the start to close an outline. After drawing, adjust the floating Smoothness slider above the tools to smooth the outline and reduce its control points. Lowering it restores detail from the original stroke. The slider overlays the canvas without resizing it. It stays dismissed after deselecting the shape. Drag or box-select control points to reshape and animate the finished outline. Closed outlines support fill and stroke styles.
 - Select, box-select control points, and move, scale, or rotate selections.
 - Turn grid and shape snapping on or off; pinch to zoom.
 - Edit colors, styles, layer order, locks, and symbol tint from the selection menu.
