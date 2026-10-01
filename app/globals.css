@@ -63,3 +63,5 @@
 .tool-freeform{cursor:crosshair}.smoothness-control{position:absolute;bottom:12px;left:12px;right:12px;z-index:6;max-width:480px;margin:0 auto;display:flex;align-items:center;gap:14px;min-height:46px;padding:0 14px;border:1px solid #4b465c;border-radius:12px;background:#292b33f5;box-shadow:0 5px 24px #0005;color:#b9b3c5;font-size:11px}.smoothness-control input{flex:1;min-width:50px;max-width:340px;height:36px;accent-color:var(--accent);cursor:pointer;touch-action:none}.smoothness-control output{min-width:34px;font-variant-numeric:tabular-nums;color:#d4c5f6}.smoothness-control>span{flex-shrink:0}
 
 .number-input{-webkit-user-select:text;user-select:text;-webkit-touch-callout:default}
+
+html,body{position:fixed;inset:0;max-width:100%;overflow:hidden;overscroll-behavior:none}.editor{position:fixed;inset:0;overflow:hidden;overscroll-behavior:none}.tool-scroll,.frame-strip,.shape-menu,.voice-tools,.modal{overscroll-behavior:contain}.frame-menu .frame-camera{flex-basis:100%;width:100%}

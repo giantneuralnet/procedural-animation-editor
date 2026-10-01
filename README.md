@@ -22,7 +22,8 @@ npm start
 - Draw straight lines, Bézier curves, brush strokes, freeform pen shapes, circles, and rectangles.
 - Use the Freeform pen (P) and finish within 18 screen pixels of the start to close an outline. After drawing, adjust the floating Smoothness slider above the tools to smooth the outline and reduce its control points. Lowering it restores detail from the original stroke. The slider overlays the canvas without resizing it. It stays dismissed after deselecting the shape. Drag or box-select control points to reshape and animate the finished outline. Closed outlines support fill and stroke styles.
 - Select, box-select control points, and move, scale, or rotate selections.
-- Turn grid and shape snapping on or off; pinch to zoom.
+- Turn grid and shape snapping on or off; pinch to zoom. The page stays fixed while tool strips and dialogs can scroll.
+- Main-timeline pan and zoom edits become camera keyframes. Tap the selected frame again and choose Camera to edit X, Y, and zoom numerically. Camera properties inherit until changed and animate with frame timing/easing in playback, movies, and recording transitions. Symbol editing keeps an independent navigation view.
 - Edit colors, styles, layer order, locks, and symbol tint from the selection menu.
 - Copy shapes normally or make linked symbol copies; unlink from inside a shared symbol.
 - Add, copy, delete, and reorder frames. Frame timing supports fractional and longer multiples of the timeline speed. Playback jumps from the final frame to the first without holding.
@@ -36,7 +37,7 @@ Projects automatically save to IndexedDB on this device, with safe migration fro
 
 ## Movies and recording
 
-Export portrait 1080×1920 or landscape 1920×1080 movies at any positive integer FPS. FPS controls sampling, independently of seconds per frame and frame timing multipliers: a one-second transition at 8 FPS produces eight movie frames. Numeric text fields commit on blur or Enter, leaving blank and partial entries untouched while typing. Compatible browsers use accelerated fixed-frame-rate MP4 encoding; others use real-time capture. Recording mode supports microphone audio and a draggable front-camera overlay. Use Share movie to open the device share sheet; a download fallback is offered if file sharing is unavailable. Camera and microphone require a secure origin (HTTPS or localhost), browser support, and permission.
+Export portrait 1080×1920 or landscape 1920×1080 movies at any positive integer FPS. Set Seconds per frame in either Settings or the export popup. Live playback, nested symbols, and recording previews also advance at the selected FPS. FPS controls sampling, independently of seconds per frame and frame timing multipliers: a one-second transition at 8 FPS produces eight movie frames. Numeric text fields commit on blur or Enter, leaving blank and partial entries untouched while typing. Compatible browsers use accelerated fixed-frame-rate MP4 encoding; others use real-time capture. Recording mode supports microphone audio and a draggable front-camera overlay. Use Share movie to open the device share sheet; a download fallback is offered if file sharing is unavailable. Camera and microphone require a secure origin (HTTPS or localhost), browser support, and permission.
 
 ## Structure and hosting
 

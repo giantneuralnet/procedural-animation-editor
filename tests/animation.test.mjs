@@ -602,3 +602,53 @@ test('movie sharing sends the actual movie file and offers fallback without down
  assert.equal(await shareMovieFile(file,{}),'unavailable');assert.equal(await shareMovieFile(file,{canShare:()=>false,share:()=>assert.fail('must not share an unsupported file')}),'unavailable');
  assert.equal(await shareMovieFile(file,{canShare:()=>true,share:async()=>{throw new DOMException('Cancelled','AbortError')}}),'cancelled');assert.equal(await shareMovieFile(file,{canShare:()=>true,share:async()=>{throw new Error('Unavailable')}}),'unavailable');
 });
+
+import {DEFAULT_CAMERA,hasCameraFrames,resolveCamera,interpolateCamera,mixCamera,cameraFromView,cameraToView,cameraFrameEdits,validCameraPatch} from '../lib/timeline-camera.js';
+import {viewWithCamera} from '../lib/movie-scene.js';
+test('main camera properties inherit independently until a later explicit edit',()=>{
+ let frames=[{id:'a',changes:{},camera:{x:0,y:0,zoom:1}},{id:'b',changes:{},camera:{zoom:2}},{id:'c',changes:{},camera:{x:300}},{id:'d',changes:{}}];frames=cameraFrameEdits(frames,0,{x:100,y:50,zoom:1},DEFAULT_CAMERA);
+ assert.deepEqual(resolveCamera(frames,1),{x:100,y:50,zoom:2});assert.deepEqual(resolveCamera(frames,3),{x:300,y:50,zoom:2});assert.deepEqual(interpolateCamera(frames,.5),{x:100,y:50,zoom:1.5});assert.equal(interpolateCamera(frames,1.25,'smooth').x,131.25);
+});
+test('first camera edit seeds the legacy framing without changing earlier frames',()=>{
+ const original=[{id:'a',changes:{}},{id:'b',changes:{}},{id:'c',changes:{}}],prior={x:120,y:-30,zoom:1.5},target={...prior,zoom:2};const frames=cameraFrameEdits(original,1,target,prior);assert.equal(hasCameraFrames(original),false);assert.deepEqual(resolveCamera(frames,0),prior);assert.deepEqual(resolveCamera(frames,1),target);assert.deepEqual(resolveCamera(frames,2),target);assert.deepEqual(frames[1].camera,{zoom:2});assert.equal(cameraFrameEdits(frames,1,target,target),frames);assert.deepEqual(original[0],{id:'a',changes:{}});
+});
+test('camera positions convert between screen sizes without changing world framing',()=>{
+ const camera={x:123,y:-45,zoom:2.5};for(const width of [390,960,1920]){const base=startingGridScale(width),view=cameraToView(camera,base);assert.deepEqual(cameraFromView(view.zoom,view.pan,base),camera);const movieView=viewWithCamera({width,height:800,scale:8,origin:{x:500,y:600}},camera);assert.equal(movieView.scale,base*camera.zoom);close(movieView.origin,view.pan);assert.equal(movieView.gridLevel,3)}
+});
+test('camera reorder and deletion preserve the visible framing of each surviving frame',()=>{
+ const frames=[{id:'a',changes:{},camera:{x:100,y:25,zoom:1}},{id:'b',changes:{},camera:{zoom:2}},{id:'c',changes:{},camera:{x:300}},{id:'d',changes:{},camera:{y:-40}}],before=new Map(frames.map((f,i)=>[f.id,resolveCamera(frames,i)]));
+ for(const next of [reorderFrames(frames,0,3),reorderFrames(frames,2,0),deleteFrame(frames,0),deleteFrame(frames,1)])next.forEach((f,i)=>assert.deepEqual(resolveCamera(next,i),before.get(f.id)));
+});
+test('main camera keyframes survive JSON and invalid camera values are rejected',()=>{
+ const saved=savedAnimation();saved.project.frames[0].camera={x:45,y:-60,zoom:1};saved.project.frames[1].camera={zoom:3};const restored=parseAnimation(serializeAnimation(saved));assert.deepEqual(restored.project.frames,saved.project.frames);
+ for(const bad of [null,[],{zoom:0},{zoom:20},{x:'5'},{y:Infinity},{foo:1}]){assert.equal(validCameraPatch(bad),false);saved.project.frames[0].camera=bad;assert.throws(()=>parseAnimation(serializeAnimation(saved)))}
+ assert.equal(validCameraPatch({}),true);assert.equal(validCameraPatch({zoom:.4,x:-100}),true);
+});
+test('camera and shapes use identical timings in an 8 FPS movie including frame multipliers',async()=>{
+ const shape={...initialFrames[0].changes.circle,id:'circle',x:100,y:40,w:20,h:20},frames=[{id:'a',timeMultiplier:.5,changes:{circle:shape},camera:{x:0,y:0,zoom:1}},{id:'b',changes:{circle:{x:180}},camera:{x:80,y:40,zoom:2}}],ctx=drawingContext(),canvas={width:960,height:960,getContext:()=>ctx},view={width:960,height:960,scale:1,origin:{x:0,y:0}},duration=2,seconds=movieDuration(2,duration,true,{},frames),{library,stats}=fakeEncoder();
+ await encodeAnimation({canvas,seconds,fps:8,draw:createMovieRenderer({canvas,view,frames,duration,easing:'linear'})},library);assert.equal(seconds,1);assert.equal(stats.timestamps.length,8);
+ ctx.drawn.forEach((point,i)=>{const t=i/8;close(point,{x:110*(1+t),y:(50-40*t)*(1+t)})});
+});
+test('camera loop jumps to its first frame without a final hold and recording transitions can be interrupted',()=>{
+ const frames=[{id:'a',changes:{},camera:{x:0,y:0,zoom:1}},{id:'b',changes:{},camera:{x:100,y:40,zoom:3}}];assert.deepEqual(interpolateCamera(frames,timelinePosition(frames,1,1)),DEFAULT_CAMERA);
+ const halfway=mixCamera(resolveCamera(frames,0),resolveCamera(frames,1),.5);assert.deepEqual(halfway,{x:50,y:20,zoom:2});assert.deepEqual(mixCamera(halfway,DEFAULT_CAMERA,.5),{x:25,y:10,zoom:1.5});
+});
+test('symbol exports can ignore frame cameras and projects without camera keys retain their current view',()=>{
+ const s={...initialFrames[0].changes.circle,id:'circle',x:100,y:40,w:20,h:20},frames=[{id:'a',changes:{circle:s},camera:{x:80,y:20,zoom:3}}],ctx=drawingContext(),canvas={width:960,height:960,getContext:()=>ctx},view={width:960,height:960,scale:2,origin:{x:30,y:50}};
+ createMovieRenderer({canvas,view,frames,duration:1,animateCamera:false})(0);close(ctx.drawn[0],{x:250,y:150});ctx.drawn.length=0;
+ createMovieRenderer({canvas,view,frames:[{id:'a',changes:{circle:s}}],duration:1})(0);close(ctx.drawn[0],{x:250,y:150});
+});
+test('export duration overrides preserve the chosen FPS and fractional frame timing',async()=>{
+ const frames=[{id:'a',timeMultiplier:.5,changes:{}},{id:'b',changes:{}}];for(const duration of [1,3]){const{library,stats}=fakeEncoder(),seconds=movieDuration(2,duration,true,{},frames);const movie=await encodeAnimation({canvas:{width:1920,height:1080},seconds,fps:8,draw:()=>{}},library);assert.equal(stats.timestamps.length,duration*4);assert.equal(movie.seconds,duration*.5);assert.equal(movie.fps,8)}
+});
+
+import {playbackClock} from '../lib/recording-clock.js';
+test('8 FPS live playback samples exactly eight steps in one second at a 60 Hz display refresh',()=>{
+ const clock=playbackClock(8),times=Array.from({length:60},(_,i)=>clock(i/60)).filter(t=>t!==null);assert.deepEqual(times,Array.from({length:8},(_,i)=>i/8));assert.equal(clock(1),1);assert.equal(clock(1.001),null);
+ const fromFrame=playbackClock(8,2.5);assert.equal(fromFrame(0),2.5);assert.equal(fromFrame(.125),2.625);
+});
+test('live playback preserves real-time durations after stalled frames and uses the selected FPS for symbols and cameras',()=>{
+ const clock=playbackClock(8);assert.equal(clock(0),0);assert.equal(clock(.05),null);assert.equal(clock(.52),.5);assert.equal(clock(.53),null);assert.equal(clock(1),1);
+ const frames=[{id:'a',changes:{},camera:{x:0,y:0,zoom:1}},{id:'b',changes:{},camera:{x:80,y:0,zoom:2}}],sample=playbackClock(8),samples=[];for(let i=0;i<60;i++){const seconds=sample(i/60);if(seconds!==null)samples.push({seconds,camera:interpolateCamera(frames,timelinePosition(frames,seconds,1)),symbol:timelinePosition(frames,seconds,.5)})}assert.equal(samples.length,8);samples.forEach(({seconds,camera,symbol})=>{assert.equal(camera.x,seconds*80);assert.equal(symbol,(seconds%.5)*2)});
+ for(const fps of [1,12,17,24,30,60]){const next=playbackClock(fps);assert.equal(Array.from({length:240},(_,i)=>next(i/240)).filter(t=>t!==null).length,fps)}
+});
